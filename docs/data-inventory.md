@@ -125,14 +125,18 @@
   [game-data-sources.md](game-data-sources.md) §5.2
 
 **当前包内布局**（本地实测；本地 11.21 包 **5906 个文件 / 4418.5 MB**；线上
-`t11-preview-20261029-techtree` 为 740 辆预览数据 + 20 个配置器数据文件 +
-`research/tech_tree/**` 9 件，**5920 个文件 / 4430.1 MB**，manifest 0 mismatch。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
+`tank-burst-dpm-20261104`（2026-11-04）为 t11 预览合并层 + **226 件 `tank/*.json` 已更新**
+（连发组 `burst_group_*` 36 件 + 弹径权威 `caliber` 207 件，其余文件与本地包的差集仅剩
+origin 侧预览键），**5978 个文件 / 逻辑 4238.5 MB**（manifest 逐文件字节和口径；历史
+4444.3 MB 为 du 块分配口径），manifest 0 mismatch。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
 变体目录（`medvedkovo_03`、`amigosville_03`、`rudniki_01/02/03`、`canal_01`、
 `neptune_02`；共享资产硬链接，`index.json` 按 map_id 指向本 key）。其余 12 个变体
 （desert_train_02/03、erlenberg_01/02、medvedkovo_02、amigosville_02、milbase_02..05、
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
 （738 辆）计数；线上预览 release 为 740 辆（`glb` +4、`game_data`/`tank`/
-`tank_images`/`suspension`/`tread` 各 +2，另含 `research/**` 20 件），共 5911 件）：
+`tank_images`/`suspension`/`tread` 各 +2，另含 `research/**` 20 件），线上现 release
+（`tank-burst-dpm-20261104`）共 **5978 件**，逐代增量见
+[game-data-sources.md](game-data-sources.md) §5.2 release 链）：
 
 | 包内路径 | 文件数 | 来自（见第一节编号） |
 |---|---|---|

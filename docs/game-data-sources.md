@@ -432,16 +432,31 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
    回拉比对 sha256，并在 WotbTools 仓跑 `bash deploy/assets/verify.sh https://assets.wotbtools.com`。
 8. 旧 release 保留回滚（至少保留当前 + 上一代）；`delta.json` 随 release 留存。
 
-**当前 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`
+**当前 release（2026-11-04）**：`tank-burst-dpm-20261104`，基于 `2d-basemap-v3-20261101`
+硬链接复制 + **226 件 `tank/*.json` 断链覆盖**（临时文件 + `os.replace` 换 inode）——
+连发组（PomPom）DPM 的 `burst_group_*` 时序字段（36 件）与弹径权威修正后的 `caliber`
+（207 件，47b980b 删除炮名解析 120 回退）随本地包上线；226 件 configs 外 deep-diff 零差异。
+manifest **5978 件 / 逻辑 4238.5 MB、0 mismatch**（字节和口径；下文历史 MB 数为 du 块分配
+口径），`delta.json` 226 modified，公网抽验 4 件 sha256 三方一致（served = manifest = 本地包），
+`deploy/assets/verify.sh` PASS；回滚版本 manifest sha256 与 226 个被覆盖文件逐字节未变。
+**发布注意（两代教训都适用）**：①`cp -al` 后 `manifest.json` 与上一代共享 inode，重算必须写
+新 inode（临时文件 + `os.replace`）——原地 `open(w)` 会同时污染回滚版本的 manifest；②origin
+各代 release 一律硬链接增量，`data/*` / `tank_images/crops.json` / 预览车资产只在 origin 侧
+带 t11 预览合并键（740 辆），本地纯 11.21 包不含，**这些路径禁止从本地包覆盖**，否则预览
+数据面回退；③`upstream_commit` 按发布程序保留 base 值 `4bfccf7c`，本次 226 件 tank 字节
+实际产自 `cacb55ca` 工具链（本地包 manifest 记录），两条 provenance 并存见
+[index.md](index.md) 2026-11-04 条目。此前（10-28→11-04）DPM 修复未上线即因发布链从未
+覆盖过 tank 文件——增量发布时**每次都要核对差集是否完整**，不能只覆盖当批次主题文件。
+
+**上一 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`
 硬链接复制 + **14 件 map2d 增量（29→43 全量枚举首发布）+ 43 件 cover 全新目录** + 2 个索引
 （`map2d/index.json` 43 条、`cover/index.json` 43 条）；旧 29 张 map2d 与上一代**逐字节相同**
 （配方确定性），故为纯增量。manifest **5978 件 / 4444.3 MB、0 mismatch**，`delta.json` 59 件
 （58 added + 1 modified），公网 14+43+2 件逐文件回拉 sha256 一致，`deploy/assets/verify.sh` PASS；
 回滚版本 `t11-preview-20261029-techtree`（5920 件 / 4430.1 MB，manifest 已按磁盘重算并保留原
-`generated`，校验 0 mismatch）。**发布注意**：`cp -al` 后 `manifest.json` 与上一代共享 inode，
-重算必须写新 inode（临时文件 + `os.replace`）——原地 `open(w)` 会同时污染回滚版本的 manifest。
+`generated`，校验 0 mismatch）。
 
-**上一 release（2026-10-29）**：`t11-preview-20261029-techtree`，基于
+**更早 release（2026-10-29）**：`t11-preview-20261029-techtree`，基于
 `t11-preview-20261027-research-t11` 硬链接复制 + 9 件 `research/tech_tree/*.json`
 增量（9 国科技树坐标 + 整车研发边，含两辆 XI 预览节点）；manifest **5920 件 /
 4430.1 MB、0 mismatch**，`delta.json` 9 件，公网 9 个文件逐文件回拉 sha256，

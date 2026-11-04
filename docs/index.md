@@ -86,6 +86,34 @@
 | v0.3.5 | 原始 HP 证据 `Damage.hp_raw`（未钳制 u16，区分零血与终态未知）与 AoI 开段物化 HP；method8 原始命中通知（全变体、不分类）。 |
 | v0.3.4 | 包流自行分帧（不再依赖 crate 对 payload 的反序列化——单个 pickle 形状偏差不再让整场失败）。 |
 
+### 资产原发布补齐：连发组 DPM + 口径权威的 tank/*.json 上线（2026-11-04，数据面发布勘误）
+
+**问题（修了但没上线）**：2026-10-28 连发组（PomPom）DPM 修复与 2026-10-27 口径权威修正
+都已合入本仓并随 v0.4.16 发布，但**阿里资产原从未收到对应 `tank/*.json`**——origin 各代
+release 全部是硬链接增量发布（research / destructibles / map2d / cover），10-28 之后没有
+任何一代覆盖过 tank 文件，线上 tank 字节停留在 2026-10-21 时代（manifest
+`upstream_commit 4bfccf7c`，PR #27）。前端 `characteristics.ts` 的整匣循环公式在数据缺
+`burst_group_*` 字段时按契约退化为旧式，百科 DPM 因此一直显示旧值（AC Atlas V2 1573 而非
+2623）；口径也停留在旧 `parse_gun_caliber` 时代（AT 7 顶级 20-pdr 等显示 120 回退值）。
+
+**发布**：`tank-burst-dpm-20261104`（基于 `2d-basemap-v3-20261101` 硬链接复制 + **226 件
+`tank/*.json` 断链覆盖**，临时文件 + `os.replace` 换 inode）。226 件差异全量 deep-diff 定
+性：36 件 `burst_group_count`/`burst_group_interval`（连发组时序字段）+ 207 件 `caliber`
+（弹径权威修正，47b980b 删除炮名解析与 120 回退），configs 外零差异。`data/*`、
+`tank_images/crops.json`、预览车资产**不动**——origin 的 t11 预览合并层（740 辆）只有
+origin 侧带预览键（BZ-79 / Object 432U 均非弹夹炮，is_burst=false，无需 burst 字段），
+本地纯 11.21 包不含这些文件，从本地覆盖即预览数据回退。manifest 重算按发布程序保留
+`upstream_commit` / `data_version` / `worktree_dirty`，刷新 `generated=
+2026-11-04T15:39:34+00:00`；5978 件 / 逻辑 4238.5 MB（manifest 逐文件字节和口径；历史记录
+的 4444.3 MB 为 du 块分配口径，不可直比），0 mismatch；226 件字节增量 +0.01 MB。
+
+**验证**：公网回拉 `tank/19825.json` / `10049` / `10001` / `10625` sha256 三方一致
+（served = 新 manifest = 本地包）；AC Atlas cfg1 `burst_group_count=3` /
+`burst_group_interval=0.25` 已上线；回滚版本 `2d-basemap-v3-20261101` 的 manifest sha256
+与 226 个被覆盖文件逐字节未变（断链正确）；WotbTools `deploy/assets/verify.sh
+https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM / 口径显示随数据即改。
+发布链细节见 [game-data-sources.md](game-data-sources.md) §5.2。
+
 ### 炮管俯仰接入装备 122（改进型垂直稳定器，2026-11-01，解析器行为修正 + WotbTools 联动）
 
 **改动**：`decode_prop2_gun_pitch` 的输入从 models.pb 原始 `GunPitchRange` 改为**按实体实际配件**扩展后的有效极限——Type5 `0B` 配件串含 **122 `improvedPitchLimitsSystem`** 时，仰角上限 +4°、俯角下限 +3°（基础值与 front/back 扇区极值同增益，`transition` 不变）。覆盖 3D 回放（`vehicles[].gun_pitch`）、射击复现（`shooter_gun_pitch` / `target_gun_pitch` / 两侧 `gun_timeline`）以及服务端 `/api/playback/data`、`/api/replay/shots`、CLI `combat`、WASM `parsePlayback` / `parseShotReplays`。`VehicleEquipment` additive 新字段 `improved_pitch_limits`（仅 true 时序列化），供 WotbTools 装甲查看器自动勾选；`tank/{id}.json` / `tank_cache.json` 的 `pitch_limits` / `gun_depression` / `gun_elevation` 仍是基础值。
