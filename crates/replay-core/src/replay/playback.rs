@@ -1147,13 +1147,22 @@ pub fn from_model(
         // 输出（`tl`），只有 `pose_kf` 消费平滑版；判定锚点不受影响。
         let tl_display = filter::SegmentedPoseTimeline::build_display(st_series, &presences);
         let clocks: Vec<f32> = st_series.iter().map(|s| s.clock).collect();
-        // 俯仰极限锚定：本车昵称优先；作者无锚定时沿用其表项（与作者路径 prop9 兜底同级）
-        let limits = render.pitch_limits.get(nickname.as_str()).or_else(|| {
-            render
-                .pitch_limits
-                .get(author_nickname.as_str())
-                .filter(|_| is_author)
-        });
+        // 俯仰极限锚定：本车昵称优先；作者无锚定时沿用其表项（与作者路径 prop9 兜底同级）。
+        // 有效极限 = 基础 models.pb 极限 + 该实体实际携带的俯仰配件（122：+4°仰 / +3°俯；
+        // 证据 = 同 eid 的 Type5 `0B` 配件串）。无 122 时借用原值，不改变既有场次。
+        let limits = render
+            .pitch_limits
+            .get(nickname.as_str())
+            .or_else(|| {
+                render
+                    .pitch_limits
+                    .get(author_nickname.as_str())
+                    .filter(|_| is_author)
+            })
+            .map(|base| {
+                combat::effective_pitch_limits(base, rec.and_then(|r| r.equipment.as_ref()))
+            });
+        let limits = limits.as_deref();
 
         // prop2 流：客户端只在炮塔转动时广播，本车全场未转炮塔 ⇒ 无流（与是否为车辆无关，
         // 见 vehicle_candidates）。此时按"炮塔随车体朝向（相对 0）、炮管水平"的中性口径

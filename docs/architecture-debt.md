@@ -28,7 +28,7 @@
 - `collect`（射击路径收集器：launch/endpoint/direct8/warning32/地形命中/降幅/tick）；
 - `indexes`（st10/prop2 索引与二分求值）；
 - `anchors`（判定锚点与渲染层滤波时间线）；
-- `pitch`（俯仰极限模型与 frac 解码）；
+- `pitch`（俯仰极限模型与 frac 解码；有效极限 = 基础 models.pb 值 + 实体配件 122 加成）；
 - `shots`（ShotReplayData/ShotScanShared 与两条提取路径）。
 
 `print_timeline`/`print_shots` 已移出核心库到 `main.rs`（库不绑定 IO 契约）。
@@ -42,7 +42,7 @@
 分支噪音，可读性反降；改为同构段收敛为共享实现，漂移面清零）：
 
 - `turret_rel_at`：炮塔相对角链（流序快照 → 时钟序兜底）；
-- `pitch_from_prop2`：prop2 frac 俯仰解码链（双方同构，回退留给调用方）；
+- `pitch_from_prop2`：prop2 frac 俯仰解码链（双方同构；入参已含实体配件 122 的有效极限，回退留给调用方）；
 - `shot_render_pack`：单发渲染层包（锚点 + 四条时间线，**数字窗口集中单处**）；
 - `tick_window_samples`：type=10 采样窗口（锚点截断 + 渲染位合成）。
 

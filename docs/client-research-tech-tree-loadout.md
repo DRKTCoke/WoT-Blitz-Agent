@@ -660,6 +660,10 @@ slot2 visible = slotsCount > 2
 > 注：`improvedPitchLimitsSystem` 的客户端英文名是 `Improved Vertical Stabilizer`
 > （与 105 `aimingStabilizer` 同名），以 `script=ImprovedPitchLimitsSystem` 与中文语义
 > 为准，不要按名字归到「垂直稳定器」。
+>
+> 消费现状（2026-11-01）：Agent core 在 prop2 俯仰解码时按同 eid 的 Type5 `0B` 配件串
+> 是否含 122 叠加 +4°仰/+3°俯（基础与扇区同增益）；WotbTools 装甲查看器/射界图提供
+> 122 勾选，数值仍从本表同源的 `devices.json` 读取。
 
 ### 6.3 单位与展示口径 ✅
 

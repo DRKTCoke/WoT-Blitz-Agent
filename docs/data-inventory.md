@@ -73,7 +73,7 @@
 |---|---|---|---|---|
 | `data/local_pb_supplement.json`（编码器取数） | 客户端无对应概念/数据、沿用既有 BlitzKit 值的字段（集中登记，不假装它们是客户端数据） | 逐项消除：`dev_name` 客户端无此概念——**保留为提取链匹配键**（`game_extract.rs::resolve_vehicle_file` 按它解析客户端车辆 XML/YAML；删掉会失配/误配）；名字仅剩 **2 条**（1 枪 + 1 履带，两种字符串源都没有） | ✅ 编码器消费（dev_name 738 / 名字 2） | 由 `tools/emit_vehicle_pb.py --emit-supplement` 生成，随游戏版本人工维护 |
 | 包 `data/tank_names.json` ＋ WASM 注入表 `tankNamesJson` | 打包器从 tank_cache 抽（现为本机 pb 携带的客户端名） | 客户端名：随包基础快照 ∪ **运行时本地化覆盖层**（两源合并后仅差 2 条） | ✅ 已接线 | 覆盖层为 per-user 运行时缓存（需客户端登录同步过）；2 条残差由补充表兜底（[decoupling-status.md](decoupling-status.md) §2 C2） |
-| WASM 注入表 `limitsJson`（炮管俯仰锚定） | 包 `tank/{id}.json` 的 `pitch_limits` ← 现役 models.pb | `local_pb` 的 `pitch_limits`（零差异） | ✅ 已接线 | 接线随 #2 |
+| WASM 注入表 `limitsJson`（炮管俯仰锚定，**基础极限**） | 包 `tank/{id}.json` 的 `pitch_limits` ← 现役 models.pb | `local_pb` 的 `pitch_limits`（零差异） | ✅ 已接线 | 接线随 #2；实体实际携带的 122 俯仰配件由 core 按同 eid 的 Type5 `0B` 配件串叠加（+4°仰/+3°俯），注入表不得预加 |
 | WASM 注入表 `shellsJson`（弹种徽标/判定） | 包 `data/shellKinds.json`（消费方运行期直读） | 客户端 `shells.xml <kind>` | ✅ 已接线 | 接线随 #7 |
 | `data/tank_id_bridge.json`（738 条 tank_id ↔ 模型名） | 现表由 `tanks.pb` 导出（`--emit-bridge`） | **纯客户端可重建（735/735 一致）**：`tank_id = (list.xml <id> << 8) | 国家基数`（`--emit-bridge --from-client`）；客户端另有 **20 辆** BK 没有的车（教程 bot/超测）可顺带覆盖 | ✅ 能力已验证（`slug` 列无消费者） | 接线时改用客户端源即可自动覆盖新车 |
 | `data/armor_states.json`（**6 辆**动态装甲车的状态声明，12 态） | 客户端 item_defs `vehicles/*/<stem>.xml` 的 `<extras><armorsStatesController>`（`tools/extract_armor_states.py` 直出） | 不适用（客户端独有概念，BlitzKit 无对应） | ✅ 已接线（解析器按它门控状态语义；消费方查"弹着时刻激活板集"同源） | 每态 `armors` = 激活的 `<part>.<armor_N>` 集合；初态 = `<default/>` 标记的 state；状态流载体 = **propID 16 `armorsStates`**（`[u8 n][n×4B]`，bit16=激活态；[总集 §2.5](回放与射击逆向总集.md)） |
@@ -88,6 +88,10 @@
 引擎产物（WASM Release，`wotb-replay-wasm-*.zip`）构建自 `crates/replay-core|wasm`，**不含
 任何 pb**；上表三张注入表（车型名 / 俯仰锚定 / 弹种表）是消费方的间接数据面——它们的
 输出（`tank_name`、`gun_pitch` 解码、`shell_kind`/`shell`）都随注入数据来源变化。
+俯仰解码的有效极限 = `limitsJson` 基础值 + 同 eid 的 **122 改进型垂直稳定器**加成
+（`data/research/devices.json`：+4°仰/+3°俯；回放证据 = Type5 `0B` 配件串）。
+`shooter_equipment` / `target_equipment` 的 `improved_pitch_limits` 是同一事实的消费方
+提示字段（仅 true 时序列化），不改变 `tank/{id}.json` 的数据面。
 
 ### 1c. 非数据类外部依赖
 
@@ -146,15 +150,18 @@
 
 **当前包内布局**（本地实测；本地 11.21 包 **5906 个文件 / 4418.5 MB**；线上当前
 `t11p2-20261106` 为 **743 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
-**6000 个文件 / 4460.8 MB**，manifest 0 mismatch；相对 `tank-burst-dpm-20261104`
-（740 辆，超测通道回滚版）为 42 件变更：5 辆 XI 全套 + 数据/pb/research。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
+**6000 个文件 / 逻辑 4460.8 MB**（manifest 逐文件字节和口径；历史 4444.3 MB 为 du 块
+分配口径），manifest 0 mismatch；相对 `tank-burst-dpm-20261104`（740 辆，超测通道回滚版；
+其 226 件 `tank/*.json` = 连发组 `burst_group_*` 36 件 + 弹径权威 `caliber` 207 件）
+为 42 件变更：5 辆 XI 全套 + 数据/pb/research。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
 变体目录（`medvedkovo_03`、`amigosville_03`、`rudniki_01/02/03`、`canal_01`、
 `neptune_02`；共享资产硬链接，`index.json` 按 map_id 指向本 key）。其余 12 个变体
 （desert_train_02/03、erlenberg_01/02、medvedkovo_02、amigosville_02、milbase_02..05、
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
-（738 辆）计数；`map2d`/`cover` 行按当前 43 图代际计数。线上当前 release 为 740 辆
-（`glb` +4、`game_data`/`tank`/`tank_images`/`suspension`/`tread` 各 +2，另含
-`research/**` 29 件 = 20 配置器 + 9 tech_tree），manifest **5978 件 / 4444.3 MB**：
+（738 辆）计数；`map2d`/`cover` 行按当前 43 图代际计数。线上当前 release 为 743 辆
+（`glb` +10、`game_data`/`tank`/`tank_images`/`suspension`/`tread` 各 +5，另含
+`research/**` 模块与树增量），manifest **6000 件 / 4460.8 MB**；逐代增量见
+[game-data-sources.md](game-data-sources.md) §5.2 release 链）：
 
 | 包内路径 | 文件数 | 来自（见第一节编号） |
 |---|---|---|

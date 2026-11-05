@@ -155,6 +155,9 @@ impl TankResolver {
     /// 数据源（优先级）：models.pb 按**实际搭载**（`comps` = ARENA_INFO comp blob 的
     /// 炮塔/主炮局部 id，`module_id>>8` 对号；多炮车非顶级主炮俯仰范围不同）>
     /// models.pb 顶级配置（最后炮塔×最后炮，comp 缺失或对号失败时回退）。
+    /// **本表是基础极限**：实体实际携带的俯仰配件（122 改进型垂直稳定器，+4°仰/+3°俯）
+    /// 由 replay-core 按同 eid 的 Type5 `0B` 配件串在解码时叠加
+    /// （`combat::effective_pitch_limits`），调用方不得在此预加，否则双重计算。
     /// models.pb 无数据的玩家不入选（其俯仰走提取链回退路径并打质量标记）。注意匿名玩家
     /// 共用显示名 "Anonyme"，同场多个匿名玩家会互相覆盖（按昵称连接的固有歧义）。
     pub fn pitch_limits_from_battle_results(

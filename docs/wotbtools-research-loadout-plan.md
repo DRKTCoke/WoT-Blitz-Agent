@@ -433,6 +433,11 @@ interface VehicleSetup {
     取 BI 11.21 数值的镜像（+10°=0.7126、+18°=0.8295、−3°=0.4315、−6°=0.3660，
     地平线 0.5）。装备 `improvedPitchLimitsSystem` 的 +4°/+3° 计入（对应 BI
     “stabiliser in the kit” 同语义）。
+    - **2026-11-01 实现状态**：装甲查看器手动拖炮接入同一 122 勾选（目标/被展示车，
+      默认关；射击复现按 `target_equipment.improved_pitch_limits` 自动勾选/禁用）。
+      3D 回放/射击复现的 prop2 俯仰解码由 Agent core 按同 eid 的 Type5 `0B` 配件串
+      叠加 +4°/+3°；WotbTools 的 `limitsJson` / `pitchLimits.js` 仍只传基础 models.pb
+      极限，**不得在此预加**（否则双重计算）。
   - **初始/顶级快捷**：只切换模块（config/发动机/履带），保留装备与物品选择。
 
 ### 6.4 联动契约（配置面板 ↔ 模型区 ↔ 参数区）

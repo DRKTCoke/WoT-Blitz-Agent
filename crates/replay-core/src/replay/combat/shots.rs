@@ -1436,9 +1436,13 @@ pub(crate) fn extract_shot_replays_from_shared(
 
     // ⑥ per-entity 索引（共享一次预建，st10/prop2 均已按 clock 排序）：type=10 状态采样 / type=7 prop2 炮塔偏航。
     let (st10, prop2) = (&shared.st10, &shared.prop2);
-    // 射手（作者）俯仰解码锚定：昵称 → (俯角°, 仰角°)；无锚定时俯仰回退 method36 field2
+    // 射手（作者）俯仰解码锚定：昵称 → 基础 models.pb 极限；本实体实际携带 122 时
+    // 叠加 +4°仰/+3°俯（证据 = 同 eid 的 Type5 `0B` 配件串）。无锚定时俯仰回退 method36 field2
     let author_name = names.get(&author_player_eid).cloned().unwrap_or_default();
-    let shooter_limits = pitch_limits.get(&author_name);
+    let shooter_limits = pitch_limits.get(&author_name).map(|base| {
+        effective_pitch_limits(base, shared.vehicle_equipment.get(&author_player_eid))
+    });
+    let shooter_limits = shooter_limits.as_deref();
 
     // ⑤' 弹药选择时间线（type=28，payload=u32 LE 槽位；录像者本人的选择状态）
     let ammo_selects = &shared.ammo_selects;
@@ -1817,8 +1821,15 @@ pub(crate) fn extract_shot_replays_from_shared(
         };
 
         // ⑨' 渲染层锚点 + 时间线（窗口语义与实现见 shot_render_pack，两路径共用；
-        // 射手炮管俯仰时间线的无锚定回退 = method36 field2 车体系俯仰序列）
-        let target_limits = pitch_limits.get(&target_name);
+        // 射手炮管俯仰时间线的无锚定回退 = method36 field2 车体系俯仰序列）。
+        // 受击方有效极限同样按该 eid 的实际配件（122）叠加，与 ⑪' 的开火帧解码同口径。
+        let target_limits = pitch_limits.get(&target_name).map(|base| {
+            effective_pitch_limits(
+                base,
+                target_eid.and_then(|e| shared.vehicle_equipment.get(&e)),
+            )
+        });
+        let target_limits = target_limits.as_deref();
         let ShotRenderPack {
             shooter_render,
             target_render,
@@ -2794,10 +2805,20 @@ pub(crate) fn extract_other_shot_replays_from_shared(
         };
 
         // 渲染层锚点 + 时间线（与作者路径共用 shot_render_pack；射手炮口兜底时跳过
-        // 射手侧渲染数据，炮管俯仰时间线无锚定回退 = 空）
+        // 射手侧渲染数据，炮管俯仰时间线无锚定回退 = 空）。
+        // 双方有效极限按各自 eid 的实际配件（122）叠加，与开火帧解码同口径。
         let shooter_name_val = names.get(&l.shooter).cloned().unwrap_or_default();
-        let shooter_limits = pitch_limits.get(&shooter_name_val);
-        let target_limits = pitch_limits.get(&target_name);
+        let shooter_limits = pitch_limits
+            .get(&shooter_name_val)
+            .map(|base| effective_pitch_limits(base, shared.vehicle_equipment.get(&l.shooter)));
+        let shooter_limits = shooter_limits.as_deref();
+        let target_limits = pitch_limits.get(&target_name).map(|base| {
+            effective_pitch_limits(
+                base,
+                target_eid.and_then(|e| shared.vehicle_equipment.get(&e)),
+            )
+        });
+        let target_limits = target_limits.as_deref();
         let ShotRenderPack {
             shooter_render,
             target_render,
@@ -3543,5 +3564,53 @@ mod notice_window_tests {
         );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].damage, 440);
+    }
+}
+
+#[cfg(test)]
+mod pitch_equipment_tests {
+    use super::*;
+
+    fn base() -> GunPitchRange {
+        GunPitchRange {
+            dep: 6.0,
+            ele: 18.0,
+            front: None,
+            back: None,
+            transition: None,
+        }
+    }
+
+    /// 122 的加成必须作用到 `pitch_from_prop2`（射击复现射手/受击方共用的解码链）：
+    /// frac=0（仰角上限）+4°，frac=63（俯角上限）低 3°；无 122 时逐值不变。
+    #[test]
+    fn prop2_pitch_uses_equipment_aware_limits() {
+        let b = base();
+        let eq = [103u8, 122, 0, 0, 0, 0, 0, 0, 0];
+        let eff = effective_pitch_limits(&b, Some(&eq));
+        let mut frozen = Vec::new();
+
+        let base_up = pitch_from_prop2(Some((0.0, 0u16)), None, 0.0, Some(&b), &mut frozen, "s")
+            .expect("基础仰角可解");
+        let eq_up = pitch_from_prop2(Some((0.0, 0u16)), None, 0.0, Some(eff.as_ref()), &mut frozen, "s")
+            .expect("122 仰角可解");
+        assert!(
+            (eq_up - base_up - 4.0f32.to_radians()).abs() < 1e-6,
+            "frac=0 应精确 +4°"
+        );
+
+        let base_down = pitch_from_prop2(Some((0.0, 63u16)), None, 0.0, Some(&b), &mut frozen, "s")
+            .expect("基础俯角可解");
+        let eq_down = pitch_from_prop2(Some((0.0, 63u16)), None, 0.0, Some(eff.as_ref()), &mut frozen, "s")
+            .expect("122 俯角可解");
+        assert!(
+            (base_down - eq_down - 3.0f32.to_radians()).abs() < 1e-6,
+            "frac=63 应精确低 3°"
+        );
+
+        let no_eq = effective_pitch_limits(&b, Some(&[103u8, 110, 0, 0, 0, 0, 0, 0, 0]));
+        let no_eq_up = pitch_from_prop2(Some((0.0, 0u16)), None, 0.0, Some(no_eq.as_ref()), &mut frozen, "s")
+            .expect("无 122 可解");
+        assert!((no_eq_up - base_up).abs() < 1e-9, "无 122 必须逐值不变");
     }
 }

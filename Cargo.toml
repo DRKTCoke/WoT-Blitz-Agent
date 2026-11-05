@@ -2,7 +2,7 @@
 members = ["crates/replay-core", "crates/replay-wasm"]
 
 [workspace.metadata.release]
-version = "0.4.22"
+version = "0.4.23"
 
 # 跨 crate 共用的依赖集中声明版本与 feature（此前 root 与两个 crate 三处重复，
 # 规模增长后必然漂移）。crate 内用 `foo.workspace = true` 引用。

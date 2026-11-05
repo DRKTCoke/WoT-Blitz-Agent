@@ -22,6 +22,8 @@
 //!   无俯仰极限锚定（逐发质量标记如实透传）；前端可按 tank_id 自行映射展示名。
 //!   俯仰锚定与弹种反解均可由消费方经可选参数注入（`limits_json` / `shells_json`，
 //!   数据源 = 静态资产面 / `dump-shell-kinds` 产物），注入后与服务端路径同级；
+//!   `limits_json` 只含基础 models.pb 极限，实体实际携带的俯仰配件（122）由 core
+//!   从回放 Type5 配件串自动叠加；
 //! - 无地图显示名注册表：`map_name` 为解析器枚举名，前端以 `map_id` 键控底图与语义。
 //!
 //! 纯逻辑不依赖平台 API，原生与 wasm32 同构、原生可测（tests/facets_smoke.rs）。
@@ -135,7 +137,9 @@ pub fn playback_json(
         .collect();
 
     // 俯仰锚定表注入（与 parseShotReplays 的 limitsJson 同款）：
-    // {昵称: GunPitchRange}，消费方由资产面 tank/{id}.json 的 pitch_limits 组装。
+    // {昵称: GunPitchRange}，消费方由资产面 tank/{id}.json 的**基础** pitch_limits 组装。
+    // 实体实际携带的俯仰配件（122：+4°仰/+3°俯）由 core 按同 eid 的 Type5 配件串在解码时
+    // 叠加，注入表不要预先含设备加成（会双重计算）。
     // 缺省空表时 gun_pitch 走 hull_pitch 兜底（坡上炮管俯仰不正确的根因）。
     // 非空但**非法**的注入 JSON → Err（fail-visible）：静默当空表会让俯仰无声降级且
     // 无逐发质量标记可查，属调用方契约违约而非数据边界（tankNamesJson 是展示串，仍按未注入处理）。
@@ -215,10 +219,12 @@ pub fn ai_review_json(bytes: &[u8]) -> anyhow::Result<String> {
 /// 两路合并后 shots 内 index 为局部值，消费方须按 time_s 全局重编号（契约 §shots）。
 ///
 /// `limits_json`：可选的俯仰锚定表（{昵称: {dep, ele, front?, back?, transition?}}，
-/// GunPitchRange serde 形状——消费方由资产面 tank/{id}.json 的 pitch_limits 换算
+/// GunPitchRange serde 形状——消费方由资产面 tank/{id}.json 的**基础** pitch_limits 换算
 /// dep=max、ele=−min）。服务端路径由 TankResolver 注入同名锚定；客户端路径
 /// 缺省为空表——空表下 prop2 frac 无法按车型极限解码，逐发俯仰降级标记会
-/// 如实透传（质量边界，非错误）。**非空但非法**的注入 JSON → Err（fail-visible：
+/// 如实透传（质量边界，非错误）。**注入表是基础极限**：实体实际携带的俯仰配件
+/// （122：+4°仰/+3°俯）由 core 按同 eid 的 Type5 配件串叠加，消费方不要预加，
+/// 否则双重计算。**非空但非法**的注入 JSON → Err（fail-visible：
 /// 静默当空表会让俯仰无声降级且无逐发标记可查，属调用方契约违约）。
 ///
 /// `shells_json`：可选的全局弹种反解表（`wotb-agent dump-shell-kinds` 产物，
@@ -389,8 +395,9 @@ mod js {
     /// JS 入口（时序能力）：`parsePlayback(new Uint8Array(fileBuffer), tankNamesJson?)`
     /// → PlaybackData JSON 字符串（位姿网格/弹道/击杀/阶段/可见性）。
     /// `tankNamesJson` 可选：同 `parseResult`——注入后 `vehicles[].tank_name` 为真实车型名。
-    /// `limitsJson` 可选：俯仰锚定表 JSON（{昵称: GunPitchRange}）——注入后 prop2
-    /// 俯仰按车型极限解码；缺省时 gun_pitch 走 hull_pitch 兜底（坡上炮管不准）；
+    /// `limitsJson` 可选：**基础**俯仰锚定表 JSON（{昵称: GunPitchRange}）——注入后 prop2
+    /// 俯仰按车型极限解码；实体实际携带 122 时由 core 再叠加 +4°仰/+3°俯（不要预加）。
+    /// 缺省时 gun_pitch 走 hull_pitch 兜底（坡上炮管不准）；
     /// **非空但非法**的 JSON 以字符串 Error 拒绝（fail-visible，不做静默空表降级）。
     #[wasm_bindgen(js_name = parsePlayback)]
     pub fn parse_playback(bytes: &[u8], tank_names: Option<String>, limits: Option<String>) -> Result<String, JsValue> {
@@ -411,9 +418,10 @@ mod js {
     /// → `{shots, author_path, author_error?, author_eid, others?, others_error?}` JSON 字符串
     /// （弹道/命中判定/质量标记/渲染锚点；契约 v0.1.9 起 fail-visible——作者严格
     /// 路径失败不再静默吞空，`author_path="error"` 时 `author_error` 携带原因）。
-    /// `limitsJson` 可选：俯仰锚定表 JSON（{昵称: GunPitchRange}，消费方由资产面
+    /// `limitsJson` 可选：**基础**俯仰锚定表 JSON（{昵称: GunPitchRange}，消费方由资产面
     /// tank/{id}.json 的 pitch_limits 组装 dep=max、ele=−min）——注入后 prop2 俯仰
-    /// 按车型极限解码（与服务端路径同级）；缺省空表时俯仰降级标记如实透传；
+    /// 按车型极限解码（与服务端路径同级）；实体实际携带 122 时由 core 再叠加
+    /// +4°仰/+3°俯（不要预加，否则双重计算）；缺省空表时俯仰降级标记如实透传；
     /// **非空但非法**的 JSON 以字符串 Error 拒绝（fail-visible，不做静默空表降级）。
     /// `shellsJson` 可选：全局弹种反解表 JSON（`wotb-agent dump-shell-kinds` 产物，
     /// {全局弹种 id: {type, penetration, damage, module_damage, explosion_radius}}）——

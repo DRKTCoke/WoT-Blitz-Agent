@@ -111,6 +111,14 @@
 | 履带厚度 / 原点 | chassis 段；已按**逐底盘 map** 保留（C1 修复，见 [decoupling-status.md](decoupling-status.md) §2） |
 | 炮管裁切平面 `maskSlice` | Parameters YAML `maskSlice.<gun_NN>`：`planePosition`(3D)/`planeNormal`/`planeAxis`/`planeSliceMode`/`frustumCone*`——models.pb 只带 `planePosition[1]` 标量；完整记录导出 sidecar `data/gun_mask_slices.json`（478 条，键 `tank_id:turret_local:gun_local`），包内 `data/gunMaskSlices.json`；与 gunRecoil/gunMarks 同组的**视觉/特效切片**参数，不作装甲判定边界（viewer 裁切仍用 BlitzKit 的 `gun_mask` 标量） |
 
+**俯仰装备加成（2026-11-01 接入）**：客户端装备 **id=122 `improvedPitchLimitsSystem`**
+（改进型垂直稳定器）的 `script.params.bonusValues` 为 `upperPitchLimitIncrease=4`、
+`lowerPitchLimitIncrease=3`。上表 `pitch` 仍是 models.pb 的**基础极限**；回放解码时按
+实体实际配件串（Type5 `0B`）叠加 4°/3°（基础与 front/back 扇区同增益，transition 不变）。
+可用性由每车 `<optDevicePreset>` 决定：当前 11 辆 `AlternatePitchGrouserPreset`
++ Rinoceronte 的 `DrumGunPitchLimitsPreset`（共 12 辆）。数值锚定测试见
+`crates/replay-core/tests/pitch_device_data.rs`；`tank/{id}.json` 不预计算有效值。
+
 **逐炮塔/逐主炮装甲透出**（2026-10-17）：`tank/{id}.json` 的 `configs[]` 现在带
 **additive** `turret_plates`/`turret_spaced`（按 `config.turret_index` 对应的 models.pb
 炮塔变体）与 `gun_plates`/`gun_spaced`（逐主炮；`gun_thickness` 已有）。顶层
@@ -547,20 +555,33 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
 dataset `supertest`（超测服，default），`current` 指向它。首发
 `t11p2-20261105` 因穿深缺陷（弹道迁移未适配，见 §2.7）被同日替换，两代均保留。
 
-**上一代 release（2026-11-04，超测通道回滚）**：`tank-burst-dpm-20261104`，740 辆预览
-数据，**5978 件 / 4444.3 MB**；相对 `2d-basemap-v3-20261101` 修改 226 件
-`tank/*.json`；`version.json` 登记 dataset `11.21.0-t11-preview`（通道已下线）。
-
 **再上一代 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`
+
+**上一代 release（2026-11-04，超测通道回滚）**：`tank-burst-dpm-20261104`，基于 `2d-basemap-v3-20261101`
+硬链接复制 + **226 件 `tank/*.json` 断链覆盖**（临时文件 + `os.replace` 换 inode）——
+连发组（PomPom）DPM 的 `burst_group_*` 时序字段（36 件）与弹径权威修正后的 `caliber`
+（207 件，47b980b 删除炮名解析 120 回退）随本地包上线；226 件 configs 外 deep-diff 零差异。
+manifest **5978 件 / 逻辑 4238.5 MB、0 mismatch**（字节和口径；下文历史 MB 数为 du 块分配
+口径），`delta.json` 226 modified，公网抽验 4 件 sha256 三方一致（served = manifest = 本地包），
+`deploy/assets/verify.sh` PASS；回滚版本 manifest sha256 与 226 个被覆盖文件逐字节未变。
+**发布注意（两代教训都适用）**：①`cp -al` 后 `manifest.json` 与上一代共享 inode，重算必须写
+新 inode（临时文件 + `os.replace`）——原地 `open(w)` 会同时污染回滚版本的 manifest；②origin
+各代 release 一律硬链接增量，`data/*` / `tank_images/crops.json` / 预览车资产只在 origin 侧
+带 t11 预览合并键（740 辆），本地纯 11.21 包不含，**这些路径禁止从本地包覆盖**，否则预览
+数据面回退；③`upstream_commit` 按发布程序保留 base 值 `4bfccf7c`，本次 226 件 tank 字节
+实际产自 `cacb55ca` 工具链（本地包 manifest 记录），两条 provenance 并存见
+[index.md](index.md) 2026-11-04 条目。此前（10-28→11-04）DPM 修复未上线即因发布链从未
+覆盖过 tank 文件——增量发布时**每次都要核对差集是否完整**，不能只覆盖当批次主题文件。
+
+**上一 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`；`version.json` 登记 dataset `11.21.0-t11-preview`（通道已于 2026-11-06 unlink 下线）。
 硬链接复制 + **14 件 map2d 增量（29→43 全量枚举首发布）+ 43 件 cover 全新目录** + 2 个索引
 （`map2d/index.json` 43 条、`cover/index.json` 43 条）；旧 29 张 map2d 与上一代**逐字节相同**
 （配方确定性），故为纯增量。manifest **5978 件 / 4444.3 MB、0 mismatch**，`delta.json` 59 件
 （58 added + 1 modified），公网 14+43+2 件逐文件回拉 sha256 一致，`deploy/assets/verify.sh` PASS；
 回滚版本 `t11-preview-20261029-techtree`（5920 件 / 4430.1 MB，manifest 已按磁盘重算并保留原
-`generated`，校验 0 mismatch）。**发布注意**：`cp -al` 后 `manifest.json` 与上一代共享 inode，
-重算必须写新 inode（临时文件 + `os.replace`）——原地 `open(w)` 会同时污染回滚版本的 manifest。
+`generated`，校验 0 mismatch）。
 
-**上一 release（2026-10-29）**：`t11-preview-20261029-techtree`，基于
+**更早 release（2026-10-29）**：`t11-preview-20261029-techtree`，基于
 `t11-preview-20261027-research-t11` 硬链接复制 + 9 件 `research/tech_tree/*.json`
 增量（9 国科技树坐标 + 整车研发边，含两辆 XI 预览节点）；manifest **5920 件 /
 4430.1 MB、0 mismatch**，`delta.json` 9 件，公网 9 个文件逐文件回拉 sha256，

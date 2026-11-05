@@ -3,6 +3,7 @@
 
 use super::*;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// 收集每实体的 type=7 同钟多属性刷新簇时钟（AoI 补发/通道切换签名，逆向文档 6.x：
@@ -182,9 +183,32 @@ pub fn dump_replay_streams(packets: &[(u32, f32, &[u8])]) -> serde_json::Value {
 }
 
 /// Type5 物化尾部 loadout 的配件 ID 常量（WotbTools item-catalog，BlitzKit 生产定义同步）：
-/// 103 = CALIBRATED_SHELLS 校准弹（AP/APCR 穿深 +6%、其他 +7%）、110 = ENHANCED_ARMOR 强化装甲（厚度 +4%）。
+/// 103 = CALIBRATED_SHELLS 校准弹（AP/APCR 穿深 +6%、其他 +7%）、110 = ENHANCED_ARMOR 强化装甲（厚度 +4%）、
+/// 122 = IMPROVED_PITCH_LIMITS 改进型垂直稳定器（仰角上限 +4°、俯角上限 +3°）。
 pub const EQ_CALIBRATED_SHELLS: u8 = 103;
 pub const EQ_ENHANCED_ARMOR: u8 = 110;
+pub const EQ_IMPROVED_PITCH_LIMITS: u8 = 122;
+
+/// 装备 122 的俯仰加成（度），与 `data/research/devices.json` 的
+/// `script.params.bonusValues` 同值；`crates/replay-core/tests/pitch_device_data.rs`
+/// 对该数据做锚定（客户端数值变动时测试失败，强制显式复核）。
+pub const PITCH_DEVICE_UPPER_DEG: f32 = 4.0;
+pub const PITCH_DEVICE_LOWER_DEG: f32 = 3.0;
+
+/// 实体实际配件串 → 有效俯仰极限：含 122 时叠加 +4° 仰角 / +3° 俯角
+/// （基础值与 front/back 扇区同增益，见 [`GunPitchRange::with_pitch_bonus`]），
+/// 否则借用原值（零拷贝）。配置只来自该实体自己的 Type5 `0B` 配件串，
+/// 不按昵称/车型推断。
+pub fn effective_pitch_limits<'a>(
+    base: &'a GunPitchRange,
+    equipment: Option<&[u8; 9]>,
+) -> Cow<'a, GunPitchRange> {
+    if equipment.is_some_and(|eq| eq.contains(&EQ_IMPROVED_PITCH_LIMITS)) {
+        Cow::Owned(base.with_pitch_bonus(PITCH_DEVICE_UPPER_DEG, PITCH_DEVICE_LOWER_DEG))
+    } else {
+        Cow::Borrowed(base)
+    }
+}
 
 /// Type5 `0A` item 描述符的 `wireCode`（u8）→ 消耗品逻辑标识。
 ///
@@ -371,6 +395,9 @@ pub struct VehicleEquipment {
     pub calibrated_shells: bool,
     /// 携带强化装甲（ID 110）
     pub enhanced_armor: bool,
+    /// 携带改进型垂直稳定器（ID 122）：炮管仰角上限 +4°、俯角上限 +3°
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub improved_pitch_limits: bool,
     /// 实装件数（`0B <n>` 的 n；空槽省略）
     #[serde(default)]
     pub equipment_count: u8,
@@ -390,6 +417,7 @@ impl VehicleEquipment {
         VehicleEquipment {
             calibrated_shells: eq.contains(&EQ_CALIBRATED_SHELLS),
             enhanced_armor: eq.contains(&EQ_ENHANCED_ARMOR),
+            improved_pitch_limits: eq.contains(&EQ_IMPROVED_PITCH_LIMITS),
             equipment_count: equipment_ids.len() as u8,
             equipment_ids,
             raw: eq.to_vec(),
@@ -2015,6 +2043,7 @@ mod consumable_tests {
 #[cfg(test)]
 mod loadout_tests {
     use super::*;
+    use std::borrow::Cow;
 
     /// 合成 Type5 loadout 块：`0A <k>` + k×14B 描述符 + `0B <n>` + nB 配件串 +
     /// `0C 00 0D` 帧尾（真实报文串后恒有该三字节，见 scan_loadout 护栏）。
@@ -2146,6 +2175,49 @@ mod loadout_tests {
         let eq = VehicleEquipment::from_ids(&v.equipment);
         assert!(eq.calibrated_shells, "103 = 校准弹应判为已装备");
         assert!(eq.enhanced_armor, "110 = 强化装甲应判为已装备");
+        assert!(eq.improved_pitch_limits, "122 = 改进型垂直稳定器应判为已装备");
+        let json = serde_json::to_value(&eq).unwrap();
+        assert_eq!(json["improved_pitch_limits"], true);
+    }
+
+    /// 不含 122 时标志为 false，且 false 不进入 JSON（旧消费方字节不变）。
+    #[test]
+    fn equipment_omits_improved_pitch_limits_when_not_equipped() {
+        let payload = mk_type5_loadout_with(3, &[103, 109, 107, 110]);
+        let packets: Vec<(u32, f32, &[u8])> = vec![(5, 1.0, &payload)];
+        let eq = VehicleEquipment::from_ids(collect_vehicle_equipment(&packets).get(&0x31).unwrap());
+        assert!(!eq.improved_pitch_limits);
+        let json = serde_json::to_value(&eq).unwrap();
+        assert!(
+            json.get("improved_pitch_limits").is_none(),
+            "false 时序列化省略，旧输出不变"
+        );
+    }
+
+    /// 有效极限只按实体自己的配件串叠加；无 122 借用原值，有 122 返回 +4°仰/+3°俯。
+    #[test]
+    fn effective_pitch_limits_applies_only_equipment_122() {
+        let base = GunPitchRange {
+            dep: 6.0,
+            ele: 18.0,
+            front: None,
+            back: None,
+            transition: None,
+        };
+        let none = effective_pitch_limits(&base, None);
+        assert!(matches!(none, Cow::Borrowed(_)));
+        assert_eq!(none.dep, 6.0);
+        assert_eq!(none.ele, 18.0);
+
+        let other = [103u8, 110, 0, 0, 0, 0, 0, 0, 0];
+        let other = effective_pitch_limits(&base, Some(&other));
+        assert!(matches!(other, Cow::Borrowed(_)), "其他配件不得改变俯仰");
+
+        let with_122 = [103u8, 122, 0, 0, 0, 0, 0, 0, 0];
+        let with_122 = effective_pitch_limits(&base, Some(&with_122));
+        assert!(matches!(with_122, Cow::Owned(_)));
+        assert!((with_122.dep - 9.0).abs() < 1e-6);
+        assert!((with_122.ele - 22.0).abs() < 1e-6);
     }
 
     /// XM551 #30 射手（Player_9617219477）的实测串：`0A 04` + 4×14B + `0B 09` +

@@ -28,10 +28,33 @@ pub struct GunPitchRange {
     pub transition: Option<f32>,
 }
 
+impl GunPitchRange {
+    /// 叠加俯仰配件后的有效极限。当前唯一来源：装备 122「改进型垂直稳定器」
+    /// （`data/research/devices.json`：upperPitchLimitIncrease=4、lowerPitchLimitIncrease=3）。
+    /// 基础值与 front/back 扇区极值同增益（`dep`/`max` 加俯角、`ele`/`−min` 加仰角），
+    /// `transition` 不变。基础与扇区同时平移，`gun_pitch_range_at` 的线性过渡带保持原形。
+    pub fn with_pitch_bonus(&self, upper_deg: f32, lower_deg: f32) -> Self {
+        let mut out = self.clone();
+        out.dep += lower_deg;
+        out.ele += upper_deg;
+        if let Some(f) = out.front.as_mut() {
+            f.max += lower_deg;
+            f.min -= upper_deg;
+        }
+        if let Some(b) = out.back.as_mut() {
+            b.max += lower_deg;
+            b.min -= upper_deg;
+        }
+        out
+    }
+}
+
 /// 昵称 → 炮管俯仰限制：prop2 frac 解码的锚定表。
-/// 由 battle_results（昵称→tank_id）+ models.pb 顶级配置（`pitch_limits_from_battle_results`）构建。
-/// 注意：匿名玩家共用显示名 "Anonyme"，同场多个匿名玩家会互相覆盖（按昵称连接的固有歧义）；
-/// 取顶级配置（多配置车辆的模块级差异未区分，见"俯仰锚定粒度"审计）。
+/// 由 battle_results（昵称→tank_id）+ models.pb **实际搭载**炮塔/主炮
+/// （`pitch_limits_from_battle_results` 的 comp blob 对号）构建；此处保存基础极限，
+/// 实体实际携带的俯仰配件（122）由回放解码层按 eid 的 Type5 配件串叠加
+/// （`effective_pitch_limits`），不在锚定表内预计算。
+/// 注意：匿名玩家共用显示名 "Anonyme"，同场多个匿名玩家会互相覆盖（按昵称连接的固有歧义）。
 pub type GunPitchLimits = HashMap<String, GunPitchRange>;
 
 /// 炮塔相对角 θ（度，wrap ±180）处的有效 (俯角上限, 仰角上限)：
@@ -90,4 +113,94 @@ fn gun_pitch_range_at(r: &GunPitchRange, turret_rel_deg: f32) -> (f32, f32) {
 pub fn decode_prop2_gun_pitch(frac: f32, range: &GunPitchRange, turret_rel_rad: f32) -> f32 {
     let (dep, ele) = gun_pitch_range_at(range, turret_rel_rad * 57.29578);
     (ele - frac / 63.0 * (dep + ele)).to_radians()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> GunPitchRange {
+        GunPitchRange {
+            dep: 6.0,
+            ele: 18.0,
+            front: Some(SectorLimits {
+                min: -20.0,
+                max: 8.0,
+                range: 60.0,
+            }),
+            back: Some(SectorLimits {
+                min: -10.0,
+                max: 2.0,
+                range: 40.0,
+            }),
+            transition: Some(20.0),
+        }
+    }
+
+    /// 122 的 +4° 仰 / +3° 俯必须同时作用于基础值与前后扇区；transition 不动。
+    #[test]
+    fn pitch_bonus_extends_base_and_sectors() {
+        let b = sample();
+        let e = b.with_pitch_bonus(4.0, 3.0);
+        assert!((e.dep - 9.0).abs() < 1e-6);
+        assert!((e.ele - 22.0).abs() < 1e-6);
+        let f = e.front.expect("front 保留");
+        assert!((f.max - 11.0).abs() < 1e-6, "扇区俯角 +3");
+        assert!((f.min + 24.0).abs() < 1e-6, "扇区仰角 +4（min=−ele）");
+        assert!((f.range - 60.0).abs() < 1e-6);
+        let k = e.back.expect("back 保留");
+        assert!((k.max - 5.0).abs() < 1e-6);
+        assert!((k.min + 14.0).abs() < 1e-6);
+        assert_eq!(e.transition, b.transition);
+    }
+
+    /// prop2 端点：frac=0（仰角上限）精确 +4°，frac=63（俯角上限）精确低 3°；
+    /// 扇区朝向（0°/90°/180°/270°）都必须成立，中间 frac 由两端线性决定。
+    #[test]
+    fn pitch_bonus_moves_prop2_endpoints_exactly() {
+        let b = sample();
+        let e = b.with_pitch_bonus(4.0, 3.0);
+        let d4 = 4.0f32.to_radians();
+        let d3 = 3.0f32.to_radians();
+        for rel_deg in [0.0f32, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0] {
+            let rel = rel_deg.to_radians();
+            let base_up = decode_prop2_gun_pitch(0.0, &b, rel);
+            let base_down = decode_prop2_gun_pitch(63.0, &b, rel);
+            let eq_up = decode_prop2_gun_pitch(0.0, &e, rel);
+            let eq_down = decode_prop2_gun_pitch(63.0, &e, rel);
+            assert!(
+                (eq_up - (base_up + d4)).abs() < 1e-6,
+                "rel={rel_deg}: frac=0 应 +4°"
+            );
+            assert!(
+                ((base_down - eq_down) - d3).abs() < 1e-6,
+                "rel={rel_deg}: frac=63 应低 3°"
+            );
+        }
+    }
+
+    /// 零加成是无操作（无 122 的既有场次必须逐值不变）。
+    #[test]
+    fn zero_bonus_is_identity() {
+        let b = sample();
+        let e = b.with_pitch_bonus(0.0, 0.0);
+        assert_eq!(e.dep, b.dep);
+        assert_eq!(e.ele, b.ele);
+        assert_eq!(
+            e.front.as_ref().expect("front").max,
+            b.front.as_ref().expect("front").max
+        );
+        assert_eq!(
+            e.front.as_ref().expect("front").min,
+            b.front.as_ref().expect("front").min
+        );
+        assert_eq!(
+            e.back.as_ref().expect("back").max,
+            b.back.as_ref().expect("back").max
+        );
+        assert_eq!(
+            e.back.as_ref().expect("back").min,
+            b.back.as_ref().expect("back").min
+        );
+    }
 }

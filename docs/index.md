@@ -41,7 +41,7 @@
 
 ### 版本与发行
 
-- 版本源 = `Cargo.toml` 的 `[workspace.metadata.release].version`（现值 **v0.4.22**）。
+- 版本源 = `Cargo.toml` 的 `[workspace.metadata.release].version`（现值 **v0.4.23**）。
   该值变更合并到 `main` 后，Release workflow 自动测试、构建、创建 `v<version>` tag
   并发布 `wotb-replay-wasm-v<version>.zip`；发布策略与 Android 同步规则见
   [AGENTS.md](../AGENTS.md)。
@@ -51,6 +51,7 @@
 
 | 版本 | 内容 |
 |---|---|
+| v0.4.23 | **俯仰解码接入装备 122（解析器行为修正 + additive）**：3D 回放 `vehicles[].gun_pitch` 与射击复现 `shooter_gun_pitch` / `target_gun_pitch` / 两侧时间线按同 eid 的 Type5 `0B` 配件串叠加「改进型垂直稳定器」(122) 的 +4°仰 / +3°俯；基础与 front/back 扇区同增益，`transition` 不变。`VehicleEquipment` additive `improved_pitch_limits`（仅 true 序列化）。无 122 的场次输出逐位不变；当前 12 辆可用车（11 辆 `AlternatePitchGrouserPreset` + Rinoceronte 的 `DrumGunPitchLimitsPreset`）。数据锚定测试锁定 `devices.json` id=122 数值并断言只有 122 声明俯仰增量。WotbTools 装甲查看器配套接入手动钳制；pin bump 后重生成 AI projection golden（provenance 必变，若 fixture 含 122 车则 pitch 值变化属预期）。 |
 | v0.4.22 | **作者当前弹种时间线（additive）+ 接收突发与补给线修正**：①playback 切面新增 `author_shell_timeline`（method 0x07 确认流，折叠重复值，按作者首次死亡截断，语义证据见总集 §3.5），供 WotbTools 3D 回放开镜穿深着色；②全车辆 type=10 + prop2 接收突发时间轴重建；③补给线码受控实验纠正与系别族字段 `family`。②③改变解析输出，下游换 pin 时要重审 golden。 |
 | v0.4.21 | **录像者相机轻量能力（additive）**：新增第 6 个独立 WASM 入口 `parseRecorderCamera(bytes)`，输出 Type39 瞄准关键帧、Type23 模式、Type31 缩放、method36 bloom 与 `BackwardZoom`；协议形状不符时返回 `null`。证据：46 份本地回放（11.18 / 11.19 / 11.20）零误拒，Type23/31 计数与独立分帧脚本一致；最大 JSON 约 560 KiB，解析约 40 ms。波及面：仅新增入口，现有五个入口输出不变；`collect_aim_snapshots` 与作者身份解析为无行为变化的抽取。 |
 | v0.4.20 | **射击提取链单次扫描收口 + 退化兜底 fail-visible 化（内部性能 + 错误面）**：①一次共享扫描三路提取（`extract_shot_bundle_auto_with_limits`：作者严格/他人宽松/未归属命中），`parseShotReplays` 的包流扫描 3→1、CLI diagnose 2→1；②他人宽松路径 `Result` 化——数据缺失照旧 `skipped_*` 计数，仅内部不变量破坏（非续段 + 有终点发射缺少 `notice_windows` 窗口）上抛 Err，WASM 输出 `others?`/`others_error?` 互斥键（与 `author_path="error"` 同款 fail-visible）；③`limitsJson`/`shellsJson` **非空但非法**的注入 JSON → 整体 Err（静默当空表会让俯仰/弹种无声降级且无逐发标记可查；`tankNamesJson` 是展示串，仍按未注入）；④supremacy `base_index>3` 直构输入 panic（wire 收集器已过滤，静默 continue 会让基地时间线缺段无痕迹）。性能（输出逐位不变）：`CombatTimeline::from_parts` 复用共享扫描产物（scan 少 3 次全包流遍历）、`ReplayParser::parse_file` 单次读盘（批量扫描 IO 减半）、anchors 段定位/侧倾插值二分化（≈80k 次调用热路径 O(n)→O(log n)）、`ShellKindTable::shared()` 进程级缓存。证据：全 workspace 测试 + clippy 0；射击/回放/AI 切面单测零变化。**消费方**：WotbTools 读 `others` 前先判 `others_error`；注入表组装不变；pin bump 后重生成 AI 投影 golden（预期仅 provenance）。详见本页 2026-10-31 节与 WotbTools `contracts/agent/replay-facets-v2.md` §5。 |
@@ -86,7 +87,43 @@
 | v0.3.5 | 原始 HP 证据 `Damage.hp_raw`（未钳制 u16，区分零血与终态未知）与 AoI 开段物化 HP；method8 原始命中通知（全变体、不分类）。 |
 | v0.3.4 | 包流自行分帧（不再依赖 crate 对 payload 的反序列化——单个 pickle 形状偏差不再让整场失败）。 |
 
-### 射击提取链单次扫描收口 + 退化兜底 fail-visible 化（2026-10-31，性能 + 错误面，v0.4.20）
+### 资产原发布补齐：连发组 DPM + 口径权威的 tank/*.json 上线（2026-11-04，数据面发布勘误）
+
+**问题（修了但没上线）**：2026-10-28 连发组（PomPom）DPM 修复与 2026-10-27 口径权威修正
+都已合入本仓并随 v0.4.16 发布，但**阿里资产原从未收到对应 `tank/*.json`**——origin 各代
+release 全部是硬链接增量发布（research / destructibles / map2d / cover），10-28 之后没有
+任何一代覆盖过 tank 文件，线上 tank 字节停留在 2026-10-21 时代（manifest
+`upstream_commit 4bfccf7c`，PR #27）。前端 `characteristics.ts` 的整匣循环公式在数据缺
+`burst_group_*` 字段时按契约退化为旧式，百科 DPM 因此一直显示旧值（AC Atlas V2 1573 而非
+2623）；口径也停留在旧 `parse_gun_caliber` 时代（AT 7 顶级 20-pdr 等显示 120 回退值）。
+
+**发布**：`tank-burst-dpm-20261104`（基于 `2d-basemap-v3-20261101` 硬链接复制 + **226 件
+`tank/*.json` 断链覆盖**，临时文件 + `os.replace` 换 inode）。226 件差异全量 deep-diff 定
+性：36 件 `burst_group_count`/`burst_group_interval`（连发组时序字段）+ 207 件 `caliber`
+（弹径权威修正，47b980b 删除炮名解析与 120 回退），configs 外零差异。`data/*`、
+`tank_images/crops.json`、预览车资产**不动**——origin 的 t11 预览合并层（740 辆）只有
+origin 侧带预览键（BZ-79 / Object 432U 均非弹夹炮，is_burst=false，无需 burst 字段），
+本地纯 11.21 包不含这些文件，从本地覆盖即预览数据回退。manifest 重算按发布程序保留
+`upstream_commit` / `data_version` / `worktree_dirty`，刷新 `generated=
+2026-11-04T15:39:34+00:00`；5978 件 / 逻辑 4238.5 MB（manifest 逐文件字节和口径；历史记录
+的 4444.3 MB 为 du 块分配口径，不可直比），0 mismatch；226 件字节增量 +0.01 MB。
+
+**验证**：公网回拉 `tank/19825.json` / `10049` / `10001` / `10625` sha256 三方一致
+（served = 新 manifest = 本地包）；AC Atlas cfg1 `burst_group_count=3` /
+`burst_group_interval=0.25` 已上线；回滚版本 `2d-basemap-v3-20261101` 的 manifest sha256
+与 226 个被覆盖文件逐字节未变（断链正确）；WotbTools `deploy/assets/verify.sh
+https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM / 口径显示随数据即改。
+发布链细节见 [game-data-sources.md](game-data-sources.md) §5.2。
+
+### 炮管俯仰接入装备 122（改进型垂直稳定器，2026-11-01，解析器行为修正 + WotbTools 联动）
+
+**改动**：`decode_prop2_gun_pitch` 的输入从 models.pb 原始 `GunPitchRange` 改为**按实体实际配件**扩展后的有效极限——Type5 `0B` 配件串含 **122 `improvedPitchLimitsSystem`** 时，仰角上限 +4°、俯角下限 +3°（基础值与 front/back 扇区极值同增益，`transition` 不变）。覆盖 3D 回放（`vehicles[].gun_pitch`）、射击复现（`shooter_gun_pitch` / `target_gun_pitch` / 两侧 `gun_timeline`）以及服务端 `/api/playback/data`、`/api/replay/shots`、CLI `combat`、WASM `parsePlayback` / `parseShotReplays`。`VehicleEquipment` additive 新字段 `improved_pitch_limits`（仅 true 时序列化），供 WotbTools 装甲查看器自动勾选；`tank/{id}.json` / `tank_cache.json` 的 `pitch_limits` / `gun_depression` / `gun_elevation` 仍是基础值。
+
+**证据**：`data/research/devices.json` id=122 `bonusValues.upperPitchLimitIncrease=4` / `lowerPitchLimitIncrease=3`；可用性 = 每车 `optDevicePreset`（当前 11 辆 `AlternatePitchGrouserPreset` + Rinoceronte 的 `DrumGunPitchLimitsPreset`）；回放证据 = 同 eid 的 Type5 `0B` 配件串（103/110 同源机制）。`crates/replay-core/tests/pitch_device_data.rs` 对该数据做锚定，并断言**只有 122** 声明俯仰增量——新增第二件俯仰配件时测试失败，强制显式接入。
+
+**影响面**：只有实际装 122 的车辆/玩家输出变化（极限端点精确 +4°/+3°，中间 frac 线性变化）；无 122 的场次逐位不变。`limitsJson` 契约明确为**基础**极限，core 负责叠加设备加成（WotbTools 不应在 `pitchLimits.js` / `ReplayShotsPane` 预加，否则双重计算）。WotbTools 侧装甲查看器新增 122 勾选（目标/被展示车，默认关、射击复现自动勾选），手动拖炮按扩展后极限钳制；需 pin bump + `wotbVersion` bump。
+
+
 
 - **性能（输出逐位不变）**：①新增 `extract_shot_bundle_auto_with_limits`——作者严格/他人宽松/未归属命中**一次共享扫描**三路复用，`parseShotReplays` 的包流扫描 3 次 → 1 次（CLI diagnose 2 → 1）；②`CombatTimeline::from_parts` 复用共享扫描的名字/满血锚点产物，`ReplayModel::scan` 少 3 次全包流遍历（AoI 在场段同源复用）；③`ReplayParser::parse_file` 单次读盘（此前 File::open 二次读盘，批量扫描逐文件 IO 翻倍）；④`anchors.rs` 段定位与侧倾插值改 `partition_point` 二分（原线性扫描在 ≈80k 次调用热路径上）；⑤`ShellKindTable::shared()` 进程级缓存（此前 web 端点/工具逐调用全量展开 tanks.pb）。
 - **fail-visible（错误面变化，正常数据输出不变）**：①他人宽松路径 `Result` 化——**数据**缺失仍跳过计数（`skipped_*` 契约不变），仅**内部不变量破坏**（非续段 + 有终点的发射缺少命中通知窗口；构建/消费两侧由 `build_notice_windows`/`shot_segments` 保证不可达）上抛 Err，不再用编造兜底窗静默错配归属；②`parseShotReplays` 输出 `others?` / `others_error?` 互斥键（与 `author_path="error"` 同款 fail-visible 形状）；③`limitsJson` / `shellsJson` **非空但非法**的注入 JSON → 整体 Err（此前静默当空表会让俯仰/弹种无声降级且无逐发标记可查；`tankNamesJson` 是展示串，仍按未注入处理）；④`reconstruct_supremacy_base_states` 对 `base_index > 3` 的直构输入 panic（wire 收集器已过滤，静默 continue 会让基地时间线缺段无痕迹）。
