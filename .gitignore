@@ -92,3 +92,7 @@ data/tank_tread_textures/
 # 本机 agent 配置与验收/调试产物（不入库：screenshots 含客户端贴图与反编译着色器副本）
 .zcodeignore
 screenshots/
+
+# 11.22 t11p2 预览包的工作目录（Range 提取的源 Data 根 + 阶段产物，可由
+# tools/fetch_t11_preview_assets.py + 各导出器再生，不入库）
+.t11p2/

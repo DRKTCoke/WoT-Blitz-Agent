@@ -5,7 +5,7 @@
 client-research-tech-tree-loadout.md §3.2 / §4.2），以及 XI 预览合并
 （tools/fetch_t11_techtree.py → --tech-tree-extra）的落盘事实：
 
-- 节点/研发边总数与 census 一致（306 = 304 主树 + 2 辆预览定义车；310 条整车边）；
+- 节点/研发边总数与 census 一致（308 = 304 主树 + 4 辆预览定义车；314 条整车边）；
 - 每个定义节点能对号 modules/{nation}.json（前端联表的完整性边界）；
 - 列↔tier 映射按列内一致性成立（other 树列 1..7 → tier 4..10）；
 - pending 只有 stem/x/y（未实装展示位不造名称/价格）；
@@ -20,13 +20,23 @@ import collections
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TT = ROOT / "data/research/tech_tree"
 NATIONS = ["ussr", "germany", "usa", "china", "france", "uk", "japan", "other", "european"]
-# census §3.2 的整车边行（vehicle=310）；逐来源模块 kind 的拆分是导出的派生事实，
+# census 的整车边行（vehicle）；逐来源模块 kind 的拆分是导出的派生事实，
 # 只校验自洽（各 kind 之和 = 总数），不用未记录的数字硬编码。
-CENSUS_VEHICLE_EDGES = 310
-CENSUS_NODES = 306
-CENSUS_PENDING = 6
-PREVIEW_TANKS = {"Ch67_BZ_79": ("china", 15153), "R230_Object_432U": ("ussr", 27905)}
-PENDING_STEMS = {"R228_KR_1", "A183_XM69_Hacker", "G189_Hirschkafer", "G187_Taschenratte", "J77_Ho_Ri_4", "F135_AS_XX_40_t"}
+# 2026-11-05 t11p2：XI 预览定义车 4 辆（BZ-79/432U/XM69/KR-1），登记位 pending 4 个；
+# 研发边 314 = 310（t11b 基线）+ 4（t11p2 逐车重算净增：china+1 usa+1 ussr+2）。
+CENSUS_VEHICLE_EDGES = 314
+CENSUS_NODES = 308
+CENSUS_PENDING = 4
+# 科技树上有节点的预览定义车；A179_Black_Rock 是收藏车（tier 11）但**不在树上**，
+# 单独校验它只存在于 modules 而无 tree 节点（防"树外车混进节点"回归）。
+PREVIEW_TANKS = {
+    "Ch67_BZ_79": ("china", 15153),
+    "R230_Object_432U": ("ussr", 27905),
+    "A183_XM69_Hacker": ("usa", 30497),
+    "R228_KR_1": ("ussr", 28161),
+}
+PREVIEW_OFF_TREE = {"A179_Black_Rock": ("usa", 30241)}
+PENDING_STEMS = {"G189_Hirschkafer", "G187_Taschenratte", "J77_Ho_Ri_4", "F135_AS_XX_40_t"}
 
 
 def test_tech_tree_export():
@@ -113,6 +123,16 @@ def test_tech_tree_export():
         pending_all |= {item["stem"] for item in data["pending"]}
     if pending_all != PENDING_STEMS:
         problems.append(f"pending stems {sorted(pending_all)} != 预览登记位")
+    # 树外预览车（收藏 tier 11）：必须在 modules 里，且不得出现在任何树上
+    for stem, (nation, tank_id) in PREVIEW_OFF_TREE.items():
+        modules = json.loads((ROOT / f"data/research/modules/{nation}.json").read_text(encoding="utf-8"))
+        if stem not in modules.get("tanks", {}):
+            problems.append(f"{nation}: 树外预览车 {stem} 缺 modules 条目")
+        data = json.loads((TT / f"{nation}.json").read_text(encoding="utf-8"))
+        if any(n["stem"] == stem for n in data["nodes"]):
+            problems.append(f"{nation}: 树外预览车 {stem} 不应有 tree 节点")
+        if any(item["stem"] == stem for item in data["pending"]):
+            problems.append(f"{nation}: 树外预览车 {stem} 不应在 pending")
 
     assert not problems, "tech_tree 导出问题:\n" + "\n".join(problems)
 

@@ -17,6 +17,7 @@
 | [docs/architecture-debt.md](architecture-debt.md) | 架构债与长期改动方案：已完成项（combat.rs 拆分、双路径合并）与仍留存项 |
 | [docs/game-data-sources.md](game-data-sources.md) | **数据来源权威表**：每份数据取自 BlitzKit / 本机客户端 / WG API / 自产；本地提取链、间隙甲 spaced 规则、DVPL 校验契约、DLC 覆盖层、资产 origin 发布流程（Alibaba；COS legacy）与运维陷阱、俯视合成朝向契约 |
 | [docs/data-inventory.md](data-inventory.md) | **数据面清单 / 运行所需数据总账**：运行期 11+1 项核心数据的"目前来源 / 可替代来源 / 替代完成度"+ 派生/注入数据 + 非数据类外部依赖；分发渠道与包内布局；工具索引 |
+| [docs/asset-store.md](asset-store.md) | **资产存储与去重**：不可变 release 树 + 内容寻址对象库（硬链接）、跨版本/跨 dataset 去重实测、迁移/adopt/GC/备份契约 |
 | [docs/client-research-tech-tree-loadout.md](client-research-tech-tree-loadout.md) | **客户端研发 / 科技树 / 装备-消耗品系统事实总集**（WotbTools 复刻证据基线）：数据源地图、模块 schema、`<unlocks>` 研发图全量、科技树坐标、Screens3 UI 数据契约、9 槽装备骨架与 24 件全表、消耗品/补给过滤器与效果、参数键与已证公式；含 fail-closed 边界与未决项 |
 | [docs/wotbtools-research-loadout-plan.md](wotbtools-research-loadout-plan.md) | **WotbTools 复刻实施方案与落地记录**（2026-10-27 裁定后范围）：单一整合配置界面（模块/装备/消耗品补给选择，BlitzKit 布局同构），与装甲查看器模型及百科数值联动；**不做**研发/购买/科技树/分入口；数据源铁律（客户端解析权威 / BlitzKit 备用+公式参照，隐蔽加成按客户端）、`data/research/` 导出契约、计算层规格、联动契约（configIndex/delta/URL）、已知偏差表、P0–P4 分期与测试门禁；§12 实现状态与实现期口径 |
 | [docs/decoupling-status.md](decoupling-status.md) | 解耦现状（BlitzKit → 本机客户端自产，已全量完成）：已定案差异清单、封面图与命名域细节、对外沟通材料 |
@@ -379,6 +380,68 @@
 
 ### 数据面
 
+- **内容寻址对象库（2026-11-05，存储去重，additive）**：`/srv/wotb-assets/objects/<sha[:2]>/<sha256>`
+  保存唯一内容，`releases/<id>` 树改为对象硬链接；Caddy 仍按静态文件伺服，URL/ETag 语义不变。
+  新增 `tools/asset_store.py`（`import` / `materialize` / `adopt` / `gc` / `stats` / `verify`）
+  与 `tools/test_asset_store.py`（9 用例）。实测：11.21 单包 **5965 条 / 逻辑 4432.9 MB →
+  5841 个唯一对象 / 4216.7 MB（包内去重 4.9%）**；11.21 与 t11_preview 的 5907 条共同路径中
+  **5899 条逐字节相同**；3 个本机包合计 **13075.9 MB → 4237.4 MB（67.6%）**。**生产迁移
+  （2026-11-05）**：`/srv/wotb-assets` 的 9 个 release 逻辑 **39449.5 MB** → 全局唯一
+  **6107 个对象 / 4237.9 MB（去重 89.3%）**；`verify --full --links` PASS（53035 条路径、
+  6107 个对象全量哈希），release 树在盘上 **4.0 GB**（对象硬链接共享）。**t11p2 发布后
+  （2026-11-06）**：10 个 release，**6147 个对象 / 4257.6 MB（去重 90.3%）**，盘上
+  **4.1 GB**。**波及面**：
+  存储/发布流程；`cp -al` 旧流程仍可用，`adopt` 可原地迁移已有 release。
+  详见 [asset-store.md](asset-store.md)。
+- **超测服 t11p2 预览包（2026-11-05/06，数据面更新）**：新预览源
+  `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）整理上线，dataset 通道
+  重组为 **`supertest`（超测服，default）+ `11.21.0`（现役）**——超测服整体复用同一
+  通道随预览轮次重指（t11b → t11p2 → …），`11.22` 通道待正式服包发布时加入（终态
+  三通道：超测服 / 11.21 / 11.22）；旧通道 `11.21.0-t11-preview` 已 `unlink` 下线。
+  生产 release **`t11p2-20261106`**（**6000 件 / 4460.8 MB / 743 辆 = 738 + 5 XI**，
+  digest `sha256:ea489ff1…`；首发 `t11p2-20261105` 因穿深缺陷同日替换，均保留回滚）。
+  新实装 XI：`R228_KR_1`（28161）、`A179_Black_Rock`（30241，收藏车不上树）、
+  `A183_XM69_Hacker`（30497）；BZ-79/432U 数值随 t11p2 更新。**提取纪律**：对基线
+  预览 ZIP 做逐成员 CRC 对比，只拉变化成员（车辆 XML 94+3、共享元数据、预览车全套；
+  实测 327 文件 / 202 MB）；新坦克复用的旧车贴图直接用本机 11.21 客户端字节
+  （`tex_fail=[]`）。**弹道迁移适配**：t11p2 把 piercingPower/speed/maxDistance 从炮
+  `<shots>` 迁入 `shells.xml` 弹种条目，`tools/extract_vehicles.py` 按"shots 有值优先、
+  为空回落弹种条目"适配（首发漏适配 → 全弹种穿深 0，已修）；`dump-shell-kinds` 富表
+  随新 pb 重导（弹种表 2090 → 2099）。**科技树外科更新**（`tools/update_t11_techtree.py`，
+  新工具）：97 辆 CRC 变化车逐车重算研发边，`R228`/`A183` 由 pending 转正 →
+  **308 节点 / 4 pending / 314 边**。**波及面**：预览通道数据与工具链；11.21 现役通道
+  零变化；`M6`/`T-43` 部分根模糊匹配污染由匹配器词缀锚定修复（完整客户端 738 辆
+  game_data 逐字节无回归）。来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7。
+  **公网路径**：`/versions.json` 与
+  `/v/<id>/...` 需 WotbTools 的 Caddyfile（`/v/*` + `/versions.json`）redeploy 后生效——
+  当前生产 Caddy 仍是旧配置（两路径 404）；新 Caddyfile 已用临时容器对真实
+  `/srv/wotb-assets` 验证（`/index.json`、`/version.json`、`/versions.json`、dataset
+  路径全 200），未改动生产 Caddy。前端选择器与 Caddy 同批部署。
+  契约见 [game-data-sources.md](game-data-sources.md) §5.2 与
+  [data-inventory.md](data-inventory.md) §2.1。
+- **按游戏版本的 dataset 版本管理（2026-11-05，additive 发布面）**：资产 origin 从"单份
+  `current`"扩展为 `datasets/<dataset-id> -> releases/<release-id>` + `current -> datasets/<default-id>` +
+  主机级 `versions.json`。每个 release 写不可变 `version.json`（`dataset_id` / `game_version` /
+  `variant` / `release` / `content_digest` / `manifest_sha256` / `tank_count` / `status`）；
+  `content_digest` 只由 manifest 的 path→sha256 与语义化 `data_version` 决定（排除
+  `generated` / `upstream_commit` / `worktree_dirty` / 提取时间戳），同内容重建不漂移。
+  新增 `tools/asset_release.py`（`stamp` / `catalog` / `verify` / `delta`）与
+  `tools/test_asset_release.py`（12 用例）；`scripts/export_asset_pack.py --refresh-manifest`
+  同步排除 `version.json` / `delta.json`（发布元数据不进内容清单）。对外路径
+  `/v/<dataset-id>/...` + `/versions.json`，根路径仍指 `current`（旧客户端零改动）；
+  WotbTools 侧增加显式数据版本下拉（侧边栏 logo 下方，移动端在更多设置）、`?data=`/localStorage
+  选择、Android `/agent-assets/v/<id>` 透传、`deploy/assets/{Caddyfile,dataset.sh,verify.sh}`
+  与 CI fixture，`wotbVersion` 4.2.3→4.2.4。**证据**：真实 11.21 包（5965 件/738 辆）
+  `stamp --dry-run` 通过；Python 12 用例、WotbTools `vue-tsc` 与定向 Vitest 用例通过。
+  **生产登记（2026-11-05，2026-11-06 通道重组）**：最初登记 `11.21.0-t11-preview`
+  （default）+ `11.21.0`；t11p2 上线时改为 **`supertest`（超测服，default）+ `11.21.0`**，
+  旧通道 `unlink` 下线，`current` 根路径行为对旧客户端保持连续。**公网路径**：`/versions.json` 与
+  `/v/<id>/...` 需 WotbTools 的 Caddyfile（`/v/*` + `/versions.json`）redeploy 后生效——
+  当前生产 Caddy 仍是旧配置（两路径 404）；新 Caddyfile 已用临时容器对真实
+  `/srv/wotb-assets` 验证（`/index.json`、`/version.json`、`/versions.json`、dataset
+  路径全 200），未改动生产 Caddy。前端选择器与 Caddy 同批部署。
+  契约见 [game-data-sources.md](game-data-sources.md) §5.2 与
+  [data-inventory.md](data-inventory.md) §2.1。
 - **客户端 maskSlice 记录导出；炮管裁切保持 BlitzKit 口径（2026-10-28）**：`maskSlice`
   是客户端炮管**视觉/特效切片**参数（与同车 yaml 的 `gunRecoil`/`gunMarks`/`markerPosition`
   同组），**不是装甲外部模块的边界**。装甲查看器继续用 BlitzKit 口径：`gun_mask` 标量

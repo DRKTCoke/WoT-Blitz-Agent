@@ -631,8 +631,18 @@ def main() -> int:
     index = build_index(ui)
     key_index = index["key"]
     ctx = build_icon_context(game_data, args.lang)
+    if args.all:
+        targets = [(tid, t["stem"], t["nation"]) for tid, t in sorted(table.items())]
+    elif args.tank:
+        targets = [(int(x), table[int(x)]["stem"], table[int(x)]["nation"]) for x in args.tank]
+    else:
+        print("!! 需要 --tank <id> 或 --all", file=sys.stderr)
+        return 2
     # 别名表自检：目标必须在客户端索引里真的存在。写错文件名立刻炸——否则别名会静默退化成缺图。
-    bad_alias = [(s, f) for s, f in ICON_ALIAS.items() if icon_key(f) not in key_index]
+    # 只校验**本次导出目标**的别名（部分客户端根/预览根没有全库图标；--all 时等价于全表校验）。
+    target_stems = {stem for _, stem, _ in targets}
+    bad_alias = [(s, f) for s, f in ICON_ALIAS.items()
+                 if s in target_stems and icon_key(f) not in key_index]
     if bad_alias:
         for s, f in bad_alias:
             print(f"!! ICON_ALIAS 目标不存在于客户端: {s} -> {f}", file=sys.stderr)
@@ -643,14 +653,6 @@ def main() -> int:
           f"（@2x {n_x2}）｜声明源：逐车 iconPath {len(ctx['declared'])} 辆、"
           f"注册表 {len(ctx['registry'])} 键、list.xml {len(ctx['list_keys'])} 辆、"
           f"字符串 {len(ctx['strings'])} 条")
-
-    if args.all:
-        targets = [(tid, t["stem"], t["nation"]) for tid, t in sorted(table.items())]
-    elif args.tank:
-        targets = [(int(x), table[int(x)]["stem"], table[int(x)]["nation"]) for x in args.tank]
-    else:
-        print("!! 需要 --tank <id> 或 --all", file=sys.stderr)
-        return 2
 
     def declared_for(stem: str, nation: str) -> list:
         return declared_candidates(stem, nation, ctx, ambiguous)

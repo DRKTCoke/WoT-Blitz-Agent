@@ -697,6 +697,17 @@ class Extractor:
                 s_el = shell_def
                 sid = comp.local_id("shells", shot.tag)
                 pp = (traj.text("piercingPower") or "").split()
+                if not pp and s_el is not None:
+                    # t11p2 起：客户端把弹道参数（piercingPower/speed/maxDistance）从炮共享
+                    # <shots> 迁入 shells.xml 弹种条目本身（shots 变空标签）。shots 有值时
+                    # 仍以 shots 为准（t11b 及以前语义），为空才回落弹种条目。
+                    pp = (last_text(s_el, "piercingPower") or "").split()
+                velocity = traj.floats("speed")
+                if velocity == 0.0 and s_el is not None:
+                    velocity = ffloat(s_el, "speed")
+                range_ = traj.floats("maxDistance")
+                if range_ == 0.0 and s_el is not None:
+                    range_ = ffloat(s_el, "maxDistance")
                 shells.append({
                     "id": mid(nation, sid) if sid is not None else 0,
                     "name": (self.names.display(nation, user_key_text(s_el, "userString"))
@@ -708,8 +719,8 @@ class Extractor:
                     "damage": 0.0,
                     "penetration": float(pp[0]) if pp else 0.0,
                     "module_damage": 0.0,
-                    "velocity": traj.floats("speed"),
-                    "range": traj.floats("maxDistance"),
+                    "velocity": velocity,
+                    "range": range_,
                     "penetration_far": float(pp[1]) if len(pp) > 1 else 0.0,
                     "caliber": ffloat(s_el, "caliber"),
                     "normalization": ffloat(s_el, "normalizationAngle"),

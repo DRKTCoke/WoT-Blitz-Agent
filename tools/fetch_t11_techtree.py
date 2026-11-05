@@ -3,18 +3,19 @@
 科技树与车辆清单事实，产出 `--tech-tree-extra` 增量 JSON 供
 `tools/export_research_loadout.py --with-research-graph` 合并 XI 节点。
 
-完整包 20.67 GB，本工具**不做全量下载**：ZIP central directory 支持 Range 定位，
+完整包约 20 GB，本工具**不做全量下载**：ZIP central directory 支持 Range 定位，
 只取下列小文件的字节区间并解压：
 
 - `Data/Configs/TechTree/{nation}_tree.yaml.dvpl`（9 国：XI 节点 position / premium_rows）
-- `Data/XML/item_defs/vehicles/{china,ussr}/list.xml.dvpl`（BZ-79 / Object 432U 的
+- `Data/XML/item_defs/vehicles/{nation}/list.xml.dvpl`（preview bridge 中各国车辆的
   list 事实：id/level/price/tags/userString）
 
 预览车的 tankId 用 `data/preview_tank_id_bridge.json` 对号（主 bridge 只含 11.21 的
-738 辆）。输出（默认 `data/research_t11_preview/tech_tree_extra.json`）：
+738 辆；预览 bridge 由 11.22 包 list.xml 的 `(id<<8)|国家低位` 派生）。
+输出（默认 `data/research_t11_preview/tech_tree_extra.json`）：
 
     {
-      "meta": {"source": "...", "gameVersion": "...", "fetchedAt": "..."},
+      "meta": {"source": "...", "gameVersion": "...", "fetchedAt": "...", "tanks": [...]},
       "trees": {"<nation>": {"premiumRows": int, "tanks": {"<stem>": {"position": [x, y]}}}},
       "list":  {"<nation>": {"<stem>": {"tankId": int, "listId": int, "level": int,
                                          "price": int, "priceRaw": str, "tags": str,
@@ -40,10 +41,10 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools" / "wotbtools"))
 from wotb_sc2 import decode_dvpl  # noqa: E402
 
-DEFAULT_URL = "http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.119_t11b.zip"
+DEFAULT_URL = "http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.130_t11p2.zip"
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 NATIONS = ["ussr", "germany", "usa", "china", "france", "uk", "japan", "other", "european"]
-LIST_NATIONS = ["china", "ussr"]
+DEFAULT_EXPECTED_MARKER = "11.22_supertest_tier11_5"
 CHUNK = 1 << 20
 
 ZIP_LOCAL_SIG = 0x04034B50
@@ -229,11 +230,14 @@ def main() -> None:
     ap.add_argument("--preview-bridge", default="data/preview_tank_id_bridge.json")
     ap.add_argument("--data-root", default=None,
                     help="同时物化最小预览 Data 根（--modules-only --merge 的 --game-data "
-                         "入参；含 version/Strings/两辆车的 XML+components+Parameters）")
+                         "入参；含 version/Strings/预览车所在国别的 XML+components+Parameters）")
+    ap.add_argument("--expected-marker", default=DEFAULT_EXPECTED_MARKER,
+                    help=f"version.txt 必含的构建标记（fail-closed）；默认 {DEFAULT_EXPECTED_MARKER}")
     args = ap.parse_args()
 
     bridge = json.loads((REPO_ROOT / args.preview_bridge).read_text(encoding="utf-8"))
     by_nation_stem = {(v["nation"], v["stem"]): int(tid) for tid, v in bridge.items()}
+    preview_nations = sorted({v["nation"] for v in bridge.values()})
 
     reader = RangeReader(args.url)
     print(f"zip size = {reader.length} bytes")
@@ -245,8 +249,8 @@ def main() -> None:
     wanted: dict[str, str] = {}
     data_root_members: set[str] = set()
     if args.data_root:
-        # 最小 Data 根成员（zip 内任意前缀，按尾部/包含路径匹配）：version、两国 Strings、
-        # 预览车所在国别的 list + components、两车的车辆 XML 与 Parameters yaml。
+        # 最小 Data 根成员（zip 内任意前缀，按尾部/包含路径匹配）：version、Strings、
+        # 预览车所在国别的 list + components、每辆预览车的车辆 XML 与 Parameters yaml。
         for name in entries:
             lowered = name.lower()
             if lowered.endswith("data/version.txt.dvpl"):
@@ -255,18 +259,22 @@ def main() -> None:
             if lowered.endswith(("strings/en.yaml.dvpl", "strings/zh-hans.yaml.dvpl")):
                 data_root_members.add(name)
                 continue
-            for nation in LIST_NATIONS:
+            for nation in preview_nations:
                 comp_dir = f"xml/item_defs/vehicles/{nation}/components/"
                 if lowered.endswith(f"xml/item_defs/vehicles/{nation}/list.xml.dvpl"):
                     data_root_members.add(name)
                 elif comp_dir in lowered and lowered.endswith(".xml.dvpl") \
                         and "/" not in lowered[lowered.index(comp_dir) + len(comp_dir):]:
                     data_root_members.add(name)
-            for nation, stem in (("china", "ch67_bz_79"), ("ussr", "r230_object_432u")):
-                if lowered.endswith(f"xml/item_defs/vehicles/{nation}/{stem}.xml.dvpl"):
-                    data_root_members.add(name)
-                if f"3d/tanks/parameters/{nation}/{stem}" in lowered and lowered.endswith(".dvpl"):
-                    data_root_members.add(name)
+            for nation in preview_nations:
+                for tid, v in bridge.items():
+                    if v["nation"] != nation:
+                        continue
+                    stem = v["stem"]
+                    if lowered.endswith(f"xml/item_defs/vehicles/{nation}/{stem}.xml.dvpl".lower()):
+                        data_root_members.add(name)
+                    if f"3d/tanks/parameters/{nation}/{stem}" in lowered and lowered.endswith(".dvpl"):
+                        data_root_members.add(name)
         print(f"data-root members: {len(data_root_members)}")
     for name in entries:
         # 独立版布局可能带目录前缀（app/Data/... 或 Data/...）：按尾部路径匹配。
@@ -274,7 +282,7 @@ def main() -> None:
         for nation in NATIONS:
             if lowered.endswith(f"configs/techtree/{nation}_tree.yaml.dvpl"):
                 wanted[name] = f"tree:{nation}"
-        for nation in LIST_NATIONS:
+        for nation in preview_nations:
             if lowered.endswith(f"xml/item_defs/vehicles/{nation}/list.xml.dvpl"):
                 wanted[name] = f"list:{nation}"
     missing = [n for n in NATIONS if not any(k.endswith(f"tree:{n}") for k in wanted.values())]
@@ -296,15 +304,14 @@ def main() -> None:
         else:
             lists[nation] = parse_list(text)
             print(f"  {name}: {len(lists[nation])} entries")
-            # 顺手核验版本文件，锚定数据来源（fail-closed：不是 t11b 就拒绝）
+            # 顺手核验版本文件，锚定数据来源（fail-closed：构建标记不符就拒绝）
             vname = next((n for n in entries if n.lower().endswith("data/version.txt.dvpl")), None)
             if version_txt is None and vname:
                 version_txt = decode_dvpl(read_member(reader, entries, vname)).decode("utf-8").strip()
     if version_txt is None:
         raise RuntimeError("Data/version.txt.dvpl not found in zip")
-    expected_marker = "11.22_supertest_tier11_4"
-    if expected_marker not in version_txt:
-        raise RuntimeError(f"unexpected version.txt: {version_txt!r} (want marker {expected_marker!r})")
+    if args.expected_marker not in version_txt:
+        raise RuntimeError(f"unexpected version.txt: {version_txt!r} (want marker {args.expected_marker!r})")
 
     if args.data_root:
         root = pathlib.Path(args.data_root)
@@ -325,15 +332,15 @@ def main() -> None:
             raise RuntimeError(f"data root missing version.txt.dvpl: {probe}")
 
     # 预览定义车（list 命中）必须能在 preview bridge 对号 tankId，否则这条链路断了。
-    # list.xml 全量是 11.21 现役车 + 两辆 XI 定义车；bridge 只含后者，其余条目
-    # 不是本工具的产物职责，丢弃。
+    # list.xml 全量是 11.21 现役车 + 预览 XI 定义车；bridge 只含后者，其余条目
+    # 不是本工具的产物职责，丢弃。bridge 的每一条都必须命中，缺一即 fail-closed。
     for nation, items in lists.items():
         for stem, facts in items.items():
             facts["tankId"] = by_nation_stem.get((nation, stem))
     lists = {n: {s: f for s, f in items.items() if f["tankId"] is not None} for n, items in lists.items()}
     kept = [(n, s) for n, items in lists.items() for s in items]
-    if len(kept) != 2:
-        raise RuntimeError(f"expected exactly 2 preview-defined vehicles, got: {kept}")
+    if len(kept) != len(bridge):
+        raise RuntimeError(f"expected exactly {len(bridge)} preview-defined vehicles, got: {kept}")
     print(f"preview-defined vehicles kept: {kept}")
 
     out = {
@@ -342,6 +349,7 @@ def main() -> None:
             "gameVersion": version_txt,
             "fetchedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "zipSize": reader.length,
+            "tanks": sorted(by_nation_stem.values()),
         },
         "trees": trees,
         "list": lists,

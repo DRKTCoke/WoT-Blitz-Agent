@@ -152,12 +152,28 @@ testing** happen in the WotbTools repository (https://github.com/A158Coke/WotbTo
   3. Overlay changed files with `cp --remove-destination`（或临时文件 + `os.replace`）——
      **绝不能用普通 `cp`**：未变更文件与上一 release 共享 inode，截断一个就同时改坏回滚版本。
   4. Regenerate `manifest.json` on the host over the new release（排除 `manifest.json` /
-     `delta.json`；保留 `version`/`data_version`/`upstream_commit`/`worktree_dirty`，刷新
+     `version.json` / `delta.json`；保留 `version`/`data_version`/`upstream_commit`/`worktree_dirty`，刷新
      `generated` 与逐文件 sha256），写 `delta.json`，并复核 **0 mismatch**——包括上一 release
      的 manifest/index 哈希未变。
-  5. `ln -s releases/<new> current.new && mv -T current.new current`；从
+  5. `ln -s releases/<new> current.new && mv -T current.new current`（旧式单包切换；按游戏版本
+     的 dataset 发布走第 6 步，不要手改 `datasets` 符号链接）；从
      `https://assets.wotbtools.com` 逐文件回拉比对 sha256，并在 WotbTools 仓跑
      `deploy/assets/verify.sh https://assets.wotbtools.com`。旧 release 保留回滚。
+  6. **按游戏版本的 dataset**：该 release 属于某个 `dataset_id` 时，先
+     `python tools/asset_release.py stamp --pack <release-dir> --dataset-id <id> --game-version <game_version>`
+     （预览变体加 `--variant`），再在主机执行
+     `bash deploy/assets/dataset.sh link --dataset <id> --release <new>`（自动重算
+     `versions.json` 并 verify）；只有需要改变旧客户端默认入口时才 `dataset.sh default`。
+     回滚用 `dataset.sh rollback`，不要手改 `current`/`datasets` 符号链接。
+  7. **内容寻址对象库（推荐，跨版本去重）**：`/srv/wotb-assets/objects/<sha[:2]>/<sha256>`
+     保存唯一内容，release 树改为对象硬链接（Caddy 静态伺服不变）。新发布可
+     `asset_store.py import --manifest incoming/manifest.json --files incoming --objects objects`
+     → `materialize --manifest ... --objects ... --out releases/<new> --metadata incoming`
+     → `dataset.sh link`；沿用 `cp -al` 的旧流程则在新 release 上跑
+     `asset_store.py adopt --releases releases/<new> --objects objects` 收敛。prune + 清理
+     staging 后 `asset_store.py gc`（`--dry-run` 先看）。`objects` 与 `releases` 必须同盘；
+     备份必须用 `rsync -aH`。实测单包内重复 4.9%，3 包合计 67.6%；完整契约见
+     [docs/asset-store.md](docs/asset-store.md)。
   The manifest's **per-file sha256** is the verification authority — a content change with the same
   size must still ship (vertex bakes, 2026-10-10). `tools/upload_asset_pack_cos.py` is
   **legacy-only**（旧 APK/回滚）；其 `--only <prefix>` 语义不适用于新 origin。
@@ -195,6 +211,11 @@ Standard local test posture:
    likely still running: verify it serves the current pack
    (`curl http://127.0.0.1:8123/index.json`) instead of starting a second one — the script reads
    files from disk per request, so a running instance automatically picks up rebuilt packs.
+   **数据版本选择**：第三个参数是 datasets 根目录（默认 `release/datasets`），脚本同时提供
+   `/v/<id>/...` 与 `release/versions.json`；目录布局按 `datasets/<id> -> ../releases/<release-id>`，
+   用 `python tools/asset_release.py stamp/catalog` 生成元数据。前端在
+   `?assets=http://127.0.0.1:8123` 下用 `?data=<id>` 或侧边栏 logo 下方的版本下拉切换（移动端在
+   「更多 → 显示设置」）。
 2. In the WotbTools checkout, `frontend/.env.local` must contain
    `VITE_ASSET_BASE_URL=http://127.0.0.1:8123` (gitignored; `?assets=` in a URL overrides it and
    persists to localStorage, so clear it with an empty `?assets=` when returning to the default).

@@ -83,7 +83,7 @@
 | 履带印数据（包 `tread/`） | 客户端逐车 yaml `treadParameters` + 13 张 `*tread*.dds` 贴图（`tools/export_tank_tread.py`） | 不适用 | ✅ 已接线（WotbTools `scene/treadMarks.js` 几何贴花） | 738 json（314 authored + 424 国别主贴图回落）+ 13 贴图 + `textures.json` alpha 归一化表 / 156 KB + 983 KB |
 | `data/research/`（研发/配置数据面，132 文件 ≈3.80 MB） | **本机客户端解包**：`tools/export_research_loadout.py`（`meta.json` 记 `11.21.0.1235_7376187 release/11.21.0` + 逐文件 sha256） | 不适用（客户端独有；BlitzKit 只作公式/展示参照，不作数据源） | ✅ 数据 100%：740 辆 / 9 国别模块（738 辆 11.21 + 两辆 11.22 预览：BZ-79 15153 / Object 432U 27905；预览车逐车带 `gameVersion`，`meta.preview` 记来源版本；含 `hasTurret`（客户端 `<hull><fakeTurrets>` 标记）、gun `rotationSpeed`、gun/chassis `dispersionFactors`、chassis `hysteresisHealth`/`healthRegenPerSec`/`hullPosition`/`maxLoad`（kg）、车辆级 chassis/hull 碰撞盒 + 逐炮塔盒 + `turretOrigin`/`initialTurretRotation`；技能效果取 `XML/item_defs/tankmen/avatar.xml`，弹种图标取 `Gfx/Shared/tank-supply/ammunition`；物品名缺基础 Strings 时用运行时本地化覆盖层（zh-Hans）+ 5 条 en 补充名）、24 设备 + 9 预设、64 消耗品（common 13）/ 85 补给（common 34）、20 项乘员技能（客户端 avatar.xml 的 per-level 效果 + class 归属）、9 张弹种图标、20 张技能图标、params `format` 70 键、en + zh-Hans 46 条文案、5 张模块图集 | **全部非图标数据随资产包 `research/**` 发布**（全局目录/物品/技能/params/strings/camouflage/meta + 逐车 `modules/{nation}.json`；WotbTools assetProvider 加载；新坦克/物品数值只需更新资产包，不需前端发版）；全局图标集留在 WotbTools `common/research/icons/`；不改 WASM pin。科技树坐标 + 整车研发边随 `--with-research-graph` 落盘为 `tech_tree/{nation}.json`（9 文件：306 节点 = 304 主树 + 2 辆 XI 预览定义车、6 个未实装登记位 `pending`、310 条整车边；列≠tier，tier 读 list.xml；随资产包 `research/tech_tree/**` 发布，WotbTools `agent-techtree` 消费）；ru 文案回退 en。口径与消费契约见 [wotbtools-research-loadout-plan.md](wotbtools-research-loadout-plan.md) |
 | 解包底座（DVPL/DAVA 容器、DLC `packs/` 覆盖层） | 本机自产代码（Rust `dvpl.rs` + Python `tools/wotbtools/`，fail-closed 两端对齐） | 不适用 | ✅ 100/100 | 本地链硬前提：需本机装客户端（`Data/` + `packs/`），游戏版本更新后整链重跑 |
-| 11.22 tier XI 预览包（`release/asset_pack_t11_preview/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.119_t11b.zip`（`11.22_supertest_tier11_4`）的两辆完整 XI 车 + 现役 11.21 包 | 不适用 | ✅ 已上线（`t11-preview-20261029-techtree`） | 740 辆（738+2）+ 配置器 `research/**`（全局目录 + 9 国别模块，含两辆 XI 车）+ `research/tech_tree/**` 9 件；`tank/15153` BZ-79、`tank/27905` Object 432U；含 GLB/图标/`game_data`/悬挂/履带印；当前 release 相对 `t11-preview-20261027-research-t11` 为 9 件 tech_tree 增量（上一代相对 `research-all` 为 3 件 research 增量：meta + china/ussr modules）；图标为预览包占位图（两辆相同）；BZ-79 第二弹种 `<kind>` 与 icon 冲突；`assets.wotbtools.com` 的 `current` 已切到该 release，旧 `t11-preview-20261027-research-t11`（及更早 `research-all` / `research-modules` / `t11-preview-20261022` / `initial-20261019`）均保留回滚；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
+| 11.22 tier XI 预览包（`release/asset_pack_t11p2_preview/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）的 5 辆 XI 车 + 现役 11.21 包（t11b 前代源 `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11p2-20261106`，dataset **`supertest`**/超测服，default） | **743 辆（738+5）**：BZ-79（15153）/ Object 432U（27905，数值随 t11p2 更新）+ 新实装 `R228_KR_1`（28161）/ `A179_Black_Rock`（30241，收藏车不上树）/ `A183_XM69_Hacker`（30497）；manifest **6000 件 / 4460.8 MB**，GLB `tex_fail=[]`；相对 `tank-burst-dpm-20261104`（740 辆，超测通道回滚版本）42 件变更；科技树 308 节点 / 4 pending / 314 边；弹种表 2099（+9）；4 辆新车封面为客户端 128² 占位图（XM69 为真图）；BZ-79 第二弹种 `<kind>` 与 icon 冲突；`current -> datasets/supertest`；旧 `tank-burst-dpm-20261104` 及更早 release 均保留回滚；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
 
 引擎产物（WASM Release，`wotb-replay-wasm-*.zip`）构建自 `crates/replay-core|wasm`，**不含
 任何 pb**；上表三张注入表（车型名 / 俯仰锚定 / 弹种表）是消费方的间接数据面——它们的
@@ -105,7 +105,8 @@
 ### 2.1 Alibaba asset origin（数据面主力）
 
 - origin `https://assets.wotbtools.com`，主机 `ali-sh-asset-01`（47.101.141.111）；
-  主机目录 `/srv/wotb-assets/`，`current -> releases/<pack-id>` 原子软链
+  主机目录 `/srv/wotb-assets/`，`current -> datasets/<default-id>`，dataset 再原子指向
+  `releases/<release-id>`（根路径兼容旧客户端）
 - 布局与 `release/asset_pack/` **逐项对应**，`manifest.json` 含全量逐文件 sha256
   （在合成/变体物化之后、发布之前用 `--refresh-manifest` 重算，见下）
 - **发布 = 新 release + 增量覆盖 + 主机重算 manifest + 原子切 current**：
@@ -119,16 +120,41 @@
 - **不要再用 `tools/upload_asset_pack_cos.py` 发布新内容**：该工具只服务 COS legacy
   （旧 APK 与临时回滚）；COS 根目录整体上传不是当前生产面。发布细节见
   [game-data-sources.md](game-data-sources.md) §5.2
+- **按游戏版本的 dataset（2026-11-05）**：origin 同时维护多份数据，路径
+  `/v/<dataset-id>/...`，目录 `datasets/<id> -> releases/<release-id>`，`current` 指向
+  `versions.json.default` 对应的 dataset（旧客户端兼容入口）。每个 dataset 的不可变
+  `version.json` 记录 `dataset_id` / `game_version` / `variant` / `release` /
+  `content_digest` / `manifest_sha256` / `tank_count` / `status`；`content_digest` 只由
+  manifest 的 path→sha256 与语义化 `data_version` 决定（排除 `generated`、`upstream_commit`、
+  `worktree_dirty` 与重新提取的时间戳），同内容重建不漂移。`manifest.json` /
+  `version.json` / `delta.json` / `overhead/` 是发布元数据/中间件，不进入内容清单。
+  当前生产登记的两个 dataset（2026-11-06 通道重组）：`supertest`（超测服，743 辆，
+  release `t11p2-20261106`，default；随预览轮次重指，不再按预览轮次堆 dataset）与
+  `11.21.0`（738 辆，release `initial-20261019`）；`11.22` 通道待正式服包发布时加入
+  （终态三通道：超测服 / 11.21 / 11.22）。`current` 指向 default。`/versions.json` 与
+  `/v/<id>/...` 需 WotbTools 的 Caddyfile redeploy 后生效（当前生产仍 404）。工具
+  `tools/asset_release.py`（`stamp` / `catalog` / `verify` / `delta`）与前端选择器契约见
+  [game-data-sources.md](game-data-sources.md) §5.2
+- **内容寻址对象库（2026-11-05）**：唯一内容存放在
+  `/srv/wotb-assets/objects/<sha[:2]>/<sha256>`，release 树是对象硬链接（Caddy 静态伺服
+  不变）。`tools/asset_store.py` 负责 import / materialize / adopt / gc / stats / verify；
+  旧 `cp -al` 流程仍可用，`adopt` 可原地收敛。实测单包内重复 4.9%（4432.9→4216.7 MB），
+  3 个本机包合计 13075.9→4237.4 MB（67.6%）。**生产迁移（2026-11-05）**：9 个 release
+  逻辑 **39449.5 MB** → **6107 个对象 / 4237.9 MB（去重 89.3%）**，`verify --full --links`
+  PASS（53035 条路径），release 树盘上 **4.0 GB**。存储布局、迁移与 GC 见
+  [asset-store.md](asset-store.md)
 
-**当前包内布局**（本地实测；本地 11.21 包 **5906 个文件 / 4418.5 MB**；线上
-`t11-preview-20261029-techtree` 为 740 辆预览数据 + 20 个配置器数据文件 +
-`research/tech_tree/**` 9 件，**5920 个文件 / 4430.1 MB**，manifest 0 mismatch。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
+**当前包内布局**（本地实测；本地 11.21 包 **5906 个文件 / 4418.5 MB**；线上当前
+`t11p2-20261106` 为 **743 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
+**6000 个文件 / 4460.8 MB**，manifest 0 mismatch；相对 `tank-burst-dpm-20261104`
+（740 辆，超测通道回滚版）为 42 件变更：5 辆 XI 全套 + 数据/pb/research。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
 变体目录（`medvedkovo_03`、`amigosville_03`、`rudniki_01/02/03`、`canal_01`、
 `neptune_02`；共享资产硬链接，`index.json` 按 map_id 指向本 key）。其余 12 个变体
 （desert_train_02/03、erlenberg_01/02、medvedkovo_02、amigosville_02、milbase_02..05、
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
-（738 辆）计数；线上预览 release 为 740 辆（`glb` +4、`game_data`/`tank`/
-`tank_images`/`suspension`/`tread` 各 +2，另含 `research/**` 20 件），共 5911 件）：
+（738 辆）计数；`map2d`/`cover` 行按当前 43 图代际计数。线上当前 release 为 740 辆
+（`glb` +4、`game_data`/`tank`/`tank_images`/`suspension`/`tread` 各 +2，另含
+`research/**` 29 件 = 20 配置器 + 9 tech_tree），manifest **5978 件 / 4444.3 MB**：
 
 | 包内路径 | 文件数 | 来自（见第一节编号） |
 |---|---|---|
@@ -142,8 +168,9 @@ lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。�
 | `map/{key}/ibl.webp` | 43 | #10 配套：`tools/export_map_ibl.py` 逐图环境反射（等距柱状，~28KB/图；36 + 7 变体） |
 | `suspension/{id}.json` | 728 | §1b 悬挂数据 |
 | `tread/{id}.json` + `tread/textures/*.webp` + `tread/textures.json` | 752 | §1b 履带印数据（738 + 13 + 1） |
-| `map2d/<code>.webp` + `map2d/index.json` | 30 | §10b：`tools/export_2d_basemaps.py` 写（**非打包器产物**，重打包后须重跑；资产 origin 免发版通道） |
-| `research/**` | 20 | 配置器数据（`meta.json` + 9 国别 `modules/*.json` + 全局目录/物品/技能/params/strings/涂装）；由 `scripts/export_asset_pack.py` 从 `data/research/` 复制，图标仍留 WotbTools `common/research/icons/` |
+| `map2d/<code>.webp` + `map2d/index.json` | 44 | §10b：`tools/export_2d_basemaps.py` 写（43 图 + index；**非打包器产物**，重打包后须重跑；资产 origin 免发版通道） |
+| `cover/<code>.webp` + `cover/index.json` | 44 | §10b：`tools/export_2d_basemaps.py` 写 512² picker 封面（43 图 + index；**非打包器产物**） |
+| `research/**` | 29 | 配置器数据（`meta.json` + 9 国别 `modules/*.json` + 全局目录/物品/技能/params/strings/涂装，20 件）+ `tech_tree/**` 9 件；由 `scripts/export_asset_pack.py` 从 `data/research/` 复制，图标仍留 WotbTools `common/research/icons/` |
 | `index.json` | 1 | 打包器生成（地图 id → key/display） |
 | `manifest.json` | — | 打包器生成（全量 sha256；本身不登记自己） |
 
