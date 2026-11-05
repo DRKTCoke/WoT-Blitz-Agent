@@ -115,7 +115,10 @@ def refresh_manifest(out: Path, data: Path) -> int:
     for f in sorted(out.rglob("*")):
         if any(d in f.parents for d in skip_dirs):
             continue
-        if not f.is_file() or f.name == "manifest.json":   # manifest 不登记自己
+        # manifest 不登记自己；version.json / delta.json 是发布元数据（asset_release.py
+        # 在 manifest 之后写），也不能进内容清单——否则重算一次 manifest 就会把
+        # content_digest / manifest_sha256 打乱（dataset 版本管理契约）。
+        if not f.is_file() or f.name in {"manifest.json", "version.json", "delta.json"}:
             continue
         rel = f.relative_to(out).as_posix()
         entries.append({"path": rel, "bytes": f.stat().st_size, "sha256": sha256(f)})

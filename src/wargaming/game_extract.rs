@@ -130,9 +130,11 @@ fn norm_file_name(s: &str) -> String {
 /// 在民族目录内解析某坦克的车辆 DVPL 文件。tanks.pb 的 dev_name 与游戏文件名常
 /// 不一致（如 "super-conqueror" → "GB91_Super_Conqueror"），匹配优先级：
 /// ① 精确/归一化相等；
-/// ② 文件名归一化后【包含】dev_name（最短优先，通常是基准车）；
-/// ③ dev_name 以文件名归一化为【前缀或后缀】（最长优先）。反向匹配必须锚定词缀边界、
-///    不允许纯内嵌子串——否则 "xm66f" 会被 "M6"（内嵌子串且更短）抢走匹配，装上别人的装甲。
+/// ② 文件名归一化后【词缀锚定包含】dev_name（前缀或后缀，最短优先，通常是基准车；
+///    纯内嵌子串拒绝——部分根下 "m6" 会内嵌命中 "A183_XM69_Hacker"（xm69）、
+///    "t43" 命中 "R230_Object_432U"（object432u），装上别人的装甲）；
+/// ③ dev_name 以文件名归一化为【前缀或后缀】（最长优先）。反向匹配同样必须锚定词缀
+///    边界、不允许纯内嵌子串——否则 "xm66f" 会被 "M6"（内嵌子串且更短）抢走匹配。
 fn resolve_vehicle_file(
     game_dir: &Path,
     rel: &str,
@@ -179,10 +181,16 @@ fn resolve_vehicle_file(
             let norm = norm_file_name(base);
             let (rank, tie) = if norm == target {
                 (0u8, 0usize)
-            } else if norm.contains(&target) {
-                (1, base.len()) // 正向：最短（最接近 dev_name）优先
+            } else if let Some(pos) = norm.find(&target) {
+                if pos == 0 || pos + target.len() == norm.len() {
+                    // ② 正向：词缀锚定（前缀或后缀），最短（最接近 dev_name）优先
+                    (1, base.len())
+                } else {
+                    // 纯内嵌子串：拒绝（见函数 docstring ②）
+                    continue;
+                }
             } else if target.starts_with(&norm) || target.ends_with(&norm) {
-                (2, usize::MAX - norm.len()) // 反向：最长（最具体）优先
+                (2, usize::MAX - norm.len()) // ③ 反向：最长（最具体）优先
             } else {
                 continue;
             };
@@ -445,4 +453,53 @@ pub fn game_dir_newer_than_data(game_dir: &Path, game_data_dir: &Path) -> bool {
         }
     }
     newest_data.is_some_and(|n| vt_mtime > n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 部分根（如 t11 预览 Data 根只含少量车辆 XML）下的模糊匹配护栏：
+    /// 短 dev_name 不得内嵌命中无关车辆（历史事故：M6 ⊂ XM69、T-43 ⊂ Object432U）。
+    #[test]
+    fn resolve_vehicle_file_rejects_infix_and_keeps_affix() {
+        let root = std::env::temp_dir().join(format!(
+            "wotb-agent-resolve-test-{}",
+            std::process::id()
+        ));
+        let rel = "test-only/resolve"; // 不与真实客户端 packs/<rel> 相撞
+        let dir = root.join(rel).join("usa");
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |name: &str| {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        };
+
+        // ① 精确命中优先
+        write("A183_XM69_Hacker.xml.dvpl");
+        write("M6.xml.dvpl");
+        assert_eq!(
+            resolve_vehicle_file(&root, rel, "usa", "M6", ".xml.dvpl"),
+            Some(dir.join("M6.xml.dvpl"))
+        );
+
+        // ② 纯内嵌子串拒绝：根里没有 M6 时，"m6" 不得内嵌命中 XM69_Hacker
+        std::fs::remove_file(dir.join("M6.xml.dvpl")).unwrap();
+        assert_eq!(resolve_vehicle_file(&root, rel, "usa", "M6", ".xml.dvpl"), None);
+
+        // ② 词缀锚定的正向包含仍可用："super-conqueror" ⊂ "GB91_Super_Conqueror"
+        write("GB91_Super_Conqueror.xml.dvpl");
+        assert_eq!(
+            resolve_vehicle_file(&root, rel, "usa", "super-conqueror", ".xml.dvpl"),
+            Some(dir.join("GB91_Super_Conqueror.xml.dvpl"))
+        );
+
+        // ③ 反向词缀（文件名是 dev_name 的前缀/后缀）仍可用
+        write("T25.xml.dvpl");
+        assert_eq!(
+            resolve_vehicle_file(&root, rel, "usa", "T25_AT", ".xml.dvpl"),
+            Some(dir.join("T25.xml.dvpl"))
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
