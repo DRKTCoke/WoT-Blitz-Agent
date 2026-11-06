@@ -335,7 +335,15 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   `vehicleFilter.tiers.max` 10→11（65/89 件，common 14/38），`<isVehicleAbility>` 条目
   按战斗能力排除出配置器装配池；`consumables_default.yaml` 客户端仍未提供 tier 11 条目
   （配置器默认不预选消耗品/补给，不影响可选项）。
-- **生产已上线 r4**：`releases/t11p2-20261106-r4`（`content_digest sha256:1dcf3221…`；同日中间版 `r4-xi-items`（`2820bbff…`，仅 items/modules，保留回滚；最终 r4 相对其 6 文件 = tank_cache + 5 预览 tank JSON）；r3（`3c0a4b62…`）、
+- **params 模块耐久增量（r5）**：预览客户端 `hangarParamsStructureConfig.yaml` 的
+  `modulesDumpSection` 按 7 类部件（`trackDevice` / `engineDevice` / `gunDevice` /
+  `ammobayDevice` / `turretRotatorDevice` / `surveyingDeviceDevice` / `fuelTankDevice`）
+  各 6 个指标（`MaxHealth` / `RegenHealth` / `HysteresisHealth` / `RegenPerSec` /
+  `BurnPerSec` / `RepairTime`）导出，共 42 个。`export_params` 修复预览 YAML 的
+  `numeric.keyedArchive` 包装后读取 units/digits/biggerIsBetter；合并时只追加新键，
+  保留现役 `crew`/`gunCommonReloadTime`，且不把 `modulesDumpSection` 放进
+  `mainSections`——数据已随包发布，WotbTools 面板暂不展示。
+- **生产已上线 r5**：`releases/t11p2-20261106-r5`（`content_digest sha256:1ec79041…`；相对 r4 仅 `params/structure.json`、`params/format.json`、`research/meta.json` 3 文件，补 42 个模块耐久参数且不加入 `mainSections`、暂不展示；r4（`1dcf3221…`）、r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、
   r2（`89b5cc64…`）、旧 `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
   通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道

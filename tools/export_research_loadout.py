@@ -795,6 +795,10 @@ def export_params(game_data: pathlib.Path) -> tuple[dict, dict]:
     fmt = {}
     for key, node in (format_raw or {}).items():
         inner = unwrap(node.get("keyedArchive", {})) if isinstance(node, dict) else {}
+        # 预览客户端的数值参数多一层 `numeric.keyedArchive`（11.21 无此层）；不剥掉
+        # 会让 units/digits/biggerIsBetter 全部读空（42 个模块耐久参数曾因此只有空条目）。
+        if isinstance(inner, dict) and isinstance(inner.get("numeric"), dict):
+            inner = unwrap(inner["numeric"])
         entry = {}
         if "units" in inner and isinstance(inner["units"], dict) and "string" in inner["units"]:
             entry["units"] = inner["units"]["string"]

@@ -230,10 +230,44 @@ def test_xi_item_catalogs() -> None:
             assert "steadyAimSystem" not in available, available
 
 
+def test_module_durability_params() -> None:
+    """预览 params 增量：modulesDumpSection 7×6 参数，且不进入 mainSections。"""
+    root = ROOT / ".t11p2/research_work"
+    structure_path = root / "params/structure.json"
+    format_path = root / "params/format.json"
+    if not structure_path.is_file() or not format_path.is_file():
+        print("skip module durability params (.t11p2/research_work missing)")
+        return
+    structure = json.loads(structure_path.read_text(encoding="utf-8"))
+    sections = {s.get("section"): s for s in structure["sections"]}
+    assert "modulesDumpSection" in sections, sections.keys()
+    assert "modulesDumpSection" not in structure.get("mainSections", []), structure.get("mainSections")
+    subsections = [s.get("subsection") for s in sections["modulesDumpSection"]["content"]]
+    assert subsections == [
+        "trackDevice", "engineDevice", "gunDevice", "ammobayDevice",
+        "turretRotatorDevice", "surveyingDeviceDevice", "fuelTankDevice",
+    ], subsections
+    fmt = json.loads(format_path.read_text(encoding="utf-8"))["params"]
+    prefixes = ("track", "engine", "gun", "ammobay", "turretRotator",
+                "surveyingDevice", "fuelTank")
+    suffixes = ("MaxHealth", "RegenHealth", "HysteresisHealth",
+                "RegenPerSec", "BurnPerSec", "RepairTime")
+    keys = [key for key in fmt if key.startswith(prefixes) and key.endswith(suffixes)]
+    assert len(keys) == 42, (len(keys), keys)
+    assert fmt["engineBurnPerSec"] == {
+        "units": "UNIT_PER_SECOND", "digits": 1, "biggerIsBetter": False,
+    }, fmt["engineBurnPerSec"]
+    assert fmt["engineRepairTime"] == {
+        "units": "SECOND", "digits": 2, "biggerIsBetter": False,
+    }, fmt["engineRepairTime"]
+    assert fmt["engineMaxHealth"] == {}, fmt["engineMaxHealth"]
+
+
 def main() -> None:
     test_parser_roundtrip()
     test_real_preview_artifact()
     test_xi_item_catalogs()
+    test_module_durability_params()
     print("upgrade progression tests: PASS")
 
 

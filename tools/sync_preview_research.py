@@ -12,9 +12,11 @@
    modules（含 `upgradeProgression`/`gameVersion`）与 `upgrade_top_hp.json`。
 3. 跑 `export_research_loadout.py --items-only`：刷新全局 consumables/provisions/
    consumables_default（预览客户端 `vehicleFilter` 的 tier 上限 + 新能力条目）。
-4. 校验：XI 升级树/provenance、hp_top、tier-11 物品可用性、技术树 census、
-   meta 计数；失败即非零退出。未变化的文件由第 1 步的基座原样复用。
-5. 输出 `<out>.sync.json`：逐文件 reused/updated/new 清单，供发布记录引用。
+4. 合并预览客户端 params 增量：新增 `modulesDumpSection`（7 类模块耐久 × 6 指标）
+   与 42 个 format 条目；刻意不加入 `mainSections`，数据先落盘、面板暂不展示。
+5. 校验：XI 升级树/provenance、hp_top、tier-11 物品可用性、42 个模块耐久参数、
+   技术树 census、meta 计数；失败即非零退出。未变化的文件由第 1 步基座原样复用。
+6. 输出 `<out>.sync.json`：逐文件 reused/updated/new 清单，供发布记录引用。
 """
 from __future__ import annotations
 
@@ -78,6 +80,62 @@ def available(item: dict, tank: dict) -> bool:
         return False
     include = flt.get("include") or []
     return any(rule_matches(rule, tank) for rule in include) if include else True
+
+
+def sync_params(out: pathlib.Path, game_data: pathlib.Path) -> dict:
+    """把预览客户端的参数增量并入 params/{structure,format}.json（只增不改）。
+
+    `modulesDumpSection`（7 类部件 × 6 个耐久指标）刻意不加入 `mainSections`：
+    数据先落盘，WotbTools 参数面板暂不展示。既有条目保持现役值（预览结构里
+    `crew`/`gunCommonReloadTime` 的差异不由本函数删除）。
+    """
+    structure, fmt = E.export_params(game_data)
+    version = E.decode_dvpl((game_data / "version.txt.dvpl").read_bytes()).decode("utf-8").strip()
+    sp = out / "params/structure.json"
+    fp = out / "params/format.json"
+    sd = json.loads(sp.read_text(encoding="utf-8"))
+    fd = json.loads(fp.read_text(encoding="utf-8"))
+    sections = sd.setdefault("sections", [])
+    known_sections = {s.get("section") for s in sections}
+    added_sections = []
+    for section in structure.get("sections", []):
+        name = section.get("section")
+        if name and name not in known_sections:
+            sections.append(section)
+            known_sections.add(name)
+            added_sections.append(name)
+    types = sd.setdefault("types", [])
+    for name in structure.get("types", []):
+        if name not in types:
+            types.append(name)
+    params = fd.setdefault("params", {})
+    added_params = [key for key in fmt if key not in params]
+    for key in added_params:
+        params[key] = fmt[key]
+    for doc in (sd, fd):
+        doc.setdefault("meta", {})["previewGameVersion"] = version
+    sp.write_text(json.dumps(sd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    fp.write_text(json.dumps(fd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    meta_path = out / "meta.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        files = meta.setdefault("files", {})
+        for name in ("params/structure.json", "params/format.json"):
+            data = (out / name).read_bytes()
+            files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+        prefixes = ("track", "engine", "gun", "ammobay", "turretRotator",
+                    "surveyingDevice", "fuelTank")
+        suffixes = ("MaxHealth", "RegenHealth", "HysteresisHealth",
+                    "RegenPerSec", "BurnPerSec", "RepairTime")
+        meta.setdefault("counts", {})["moduleDurabilityParams"] = sum(
+            1 for key in params if key.startswith(prefixes) and key.endswith(suffixes))
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")),
+                             encoding="utf-8")
+    return {
+        "newSections": added_sections,
+        "newParams": len(added_params),
+        "previewGameVersion": version,
+    }
 
 
 def tank_refs(modules: dict) -> dict[int, dict]:
@@ -159,6 +217,19 @@ def validate(out: pathlib.Path) -> dict:
             if len(pool) < 5:
                 problems.append(f"{tid} {kind} 可用项过少: {pool}")
 
+    params_doc = json.loads((out / "params/structure.json").read_text(encoding="utf-8"))
+    if "modulesDumpSection" not in {s.get("section") for s in params_doc.get("sections", [])}:
+        problems.append("params/structure.json 缺 modulesDumpSection")
+    params_fmt = json.loads((out / "params/format.json").read_text(encoding="utf-8"))["params"]
+    prefixes = ("track", "engine", "gun", "ammobay", "turretRotator",
+                "surveyingDevice", "fuelTank")
+    suffixes = ("MaxHealth", "RegenHealth", "HysteresisHealth",
+                "RegenPerSec", "BurnPerSec", "RepairTime")
+    durability = [key for key in params_fmt
+                  if key.startswith(prefixes) and key.endswith(suffixes)]
+    if len(durability) != 42:
+        problems.append(f"模块耐久参数 {len(durability)} != 42")
+
     meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
     counts = meta.get("counts") or {}
     if counts.get("consumables") != len(catalogs["consumables"]):
@@ -204,7 +275,12 @@ def main() -> None:
     run_exporter("--game-data", str(args.game_data), "--bridge", str(ROOT / args.bridge),
                  "--modules-only", "--merge", "--out", str(out))
     run_exporter("--game-data", str(args.game_data), "--items-only", "--out", str(out))
+    params_check = sync_params(out, pathlib.Path(args.game_data))
     checks = validate(out)
+    checks["params"] = params_check
+    checks["paramsDurability"] = json.loads(
+        (out / "meta.json").read_text(encoding="utf-8")
+    )["counts"].get("moduleDurabilityParams")
 
     after = snapshot(out)
     report = {

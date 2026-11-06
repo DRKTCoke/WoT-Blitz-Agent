@@ -117,8 +117,10 @@ data/research/
                                #   category, tags, script, displayParams, filter, isAbility}
   provisions.json              # 现役 85 条 / supertest r4 89 条（同构；tier 过滤器 max=11）
   consumables_default.json     # 客户端按 tier 默认表 + 单车覆盖（初始预填用）
-  params/structure.json        # hangarParamsStructureConfig 分组树（param/subsection/table/…）
-  params/format.json           # 每参数 {units, digits, biggerIsBetter}
+  params/structure.json        # hangarParamsStructureConfig 分组树（param/subsection/table/…；
+                               #  supertest r5 追加 modulesDumpSection，不进 mainSections）
+  params/format.json           # 每参数 {units, digits, biggerIsBetter}；supertest r5 70→112 键
+                               #  （新增 42 个模块耐久参数，暂不展示）
   strings/{lang}/research.json # en + zh-Hans：设备/消耗品/补给名与描述、参数名
                                #   tank_descr_param_*、分组标题
   icons/                       # 模块图标 5 张（Gfx/UI/ModulesTechTree/vehicle*.packed.webp）
