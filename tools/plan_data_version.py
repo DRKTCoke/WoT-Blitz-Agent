@@ -62,11 +62,13 @@ PLANES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
      ("map/", "map2d/", "cover/")),
     ("map-registry", re.compile(r"^maps\.yaml\.dvpl$"),
      ("map/", "map2d/", "cover/", "index.json")),
+    ("version", re.compile(r"^version\.txt\.dvpl$"),
+     ("data/data_version.json",)),
     ("ui", re.compile(r"^(?:Gfx/|UI/|Audio/|Shaders/|Fonts/|HtmlDocuments/|Cinema/|"
                       r"Videos/|Sounds/|Packs/|DAVAProject/)"),
      ()),
 ]
-NON_DATA_PLANES = {"ui"}
+NON_DATA_PLANES = {"ui", "version"}
 # 会影响整表 pb/cache（无法按车安全拆成独立文件）的数据面。
 CORE_PLANES = {"vehicle-roster", "vehicle-components", "vehicle-xml", "vehicle-params",
                "vehicle-model", "shared-xml"}

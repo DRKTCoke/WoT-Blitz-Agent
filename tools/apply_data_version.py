@@ -92,7 +92,7 @@ def main() -> None:
         raise SystemExit(f"plan 有未解析 tank/map：{plan.get('unresolvedTanks')[:5]} "
                          f"{plan.get('unresolvedMaps')[:5]}")
     known = set().union(*(h.planes for h in HANDLERS))
-    unknown = active - known - {"ui"}
+    unknown = active - known - {"ui", "version"}
     if unknown:
         raise SystemExit(f"没有 handler 的数据面: {sorted(unknown)}")
 

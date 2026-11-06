@@ -444,7 +444,8 @@ class MapsHandler:
         for space, rows in by_space.items():
             existing = [r["key"] for r in rows if (root / "map" / r["key"]).is_dir()]
             if existing:
-                base_by_space[space] = existing[0]
+                first = rows[0]["key"]
+                base_by_space[space] = first if first in existing else existing[0]
         changed_spaces = set(ctx.plan.get("maps") or {})
         ground_by_space: dict[str, bool] = {}
         for space in sorted(changed_spaces):

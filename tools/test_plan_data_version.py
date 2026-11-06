@@ -29,6 +29,7 @@ def classify_cases() -> None:
         "Configs/TechTree/usa_tree.yaml.dvpl": "techtree",
         "Strings/en.yaml.dvpl": "strings",
         "maps/foo.bin": "maps",
+        "version.txt.dvpl": "version",
         "Gfx/UI/icon.png.dvpl": "ui",
         "Unknown/blob.bin": "unmapped",
     }
