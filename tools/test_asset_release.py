@@ -79,6 +79,25 @@ def _stamp(root: pathlib.Path, dataset_id: str, **kwargs) -> dict:
 BASE_FILES = {"data/a.json": b"alpha", "map/x.webp": b"webp-bytes"}
 
 
+def test_verify_pack_checks_content_for_preflight():
+    """dataset.sh link 的切换前体检：verify --pack 对坏包 fail-closed。"""
+    import argparse
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pack = _write_pack(pathlib.Path(tmp) / "11.21.0", BASE_FILES)
+        _stamp(pack, "11.21.0", game_version="release/11.21.0")
+        args = argparse.Namespace(root=None, pack=str(pack), catalog=None, full=False)
+        assert ar.command_verify(args) == 0
+
+        # manifest 登记的文件缺失 → 候选体检必须失败（在线 dataset 尚未切换）
+        (pack / "data/a.json").unlink()
+        try:
+            ar.command_verify(argparse.Namespace(root=None, pack=str(pack), catalog=None, full=False))
+            raise AssertionError("broken candidate must fail verify --pack")
+        except ar.ReleaseError as exc:
+            assert "data/a.json" in str(exc)
+
+
 def test_stamp_writes_identity_and_digest():
     with tempfile.TemporaryDirectory() as tmp:
         pack = _write_pack(pathlib.Path(tmp) / "11.21.0", BASE_FILES)
