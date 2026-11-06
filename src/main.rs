@@ -2104,9 +2104,8 @@ fn cmd_update_data(
 
     println!("  Manifest: data/data_version.json updated");
     println!(
-        "Note: armor summary prefers client game_data/{} (primary plates); \
-         missing game_data falls back to BlitzKit models.pb max-plate approximation.",
-        "{id}.json"
+        "Note: armor summary prefers client game_data/{{id}}.json (primary plates); \
+         missing game_data falls back to BlitzKit models.pb max-plate approximation."
     );
     Ok(())
 }
