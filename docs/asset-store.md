@@ -155,9 +155,10 @@ python tools/asset_store.py gc --objects /srv/wotb-assets/objects \
 - **生产迁移（2026-11-05）**：`/srv/wotb-assets` 的 9 个 release 逻辑 **39449.5 MB** →
   全局唯一 **6107 个对象 / 4237.9 MB**，去重 **89.3%**；`verify --full --links` PASS
   （53035 条路径、6107 个对象全量哈希），release 树在盘上 **4.0 GB**。迁移只重排硬链接，
-  未改动任何文件内容，URL/ETag 语义不变。**t11p2 发布后（2026-11-06）**：10 个 release，
-  **6147 个对象 / 4257.6 MB（去重 90.3%）**，盘上 **4.1 GB**（新 release 经
-  `import --manifest` + `materialize` 以硬链接入库存放，增量仅 +40/+10 对象）。
+  未改动任何文件内容，URL/ETag 语义不变。**超测 r4 发布后（2026-11-06）**：**18 个 release**，
+  **6899 个对象 / 4273.1 MB（去重 94.6%）**，逻辑 **79536.9 MB**，盘上 **4.1 GB**（新 release 经
+  `import --manifest` + `materialize` 以硬链接入库存放；r4 相对 r3-xi-upgrades 仅 14 件变化，
+  新增对象 +8）。
 - 单包内部重复：约 **4.9%**（11.21 本机实测 216 MB）。
 - 相近版本/不同 dataset 的重复：按 3 个本机包实测，逻辑 **13075.9 MB** → 唯一 **4237.4 MB**，
   约 **67.6%** 的数据块可省（具体取决于实际 release 集合与 lineage）。

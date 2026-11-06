@@ -310,7 +310,7 @@ pub(crate) fn tank_data_value_prefixed(tank_id: u32, base_prefix: &str) -> Value
         "gun": bbox_json(gd_collision.and_then(|c| c.gun_bbox.clone())),
     });
 
-    json!({
+    let mut value = json!({
         "tank_id": tank_id,
         "name": name,
         "tier": tier,
@@ -337,7 +337,12 @@ pub(crate) fn tank_data_value_prefixed(tank_id: u32, base_prefix: &str) -> Value
         "gun_elevation": info.as_ref().and_then(|i| i.gun_elevation).map(|v| v as f64),
         "turret_traverse_left": info.as_ref().and_then(|i| i.turret_traverse_left).map(|v| v as f64),
         "turret_traverse_right": info.as_ref().and_then(|i| i.turret_traverse_right).map(|v| v as f64),
-    })
+    });
+    // 顶级 HP 仅 XI 有值：条件插入，避免 738 辆基线 tank JSON 多出 `"hp_top": null`。
+    if let Some(hp_top) = info.as_ref().and_then(|i| i.hp_top) {
+        value["hp_top"] = json!(hp_top);
+    }
+    value
 }
 
 fn model_config_nodes(tank_id: u32) -> (Vec<String>, Vec<String>) {

@@ -1993,27 +1993,18 @@ fn cmd_update_data(
 
     // 1. BlitzKit pb（tanks.pb + models.pb 一起下载；换源转正（2026-10-15）后本机编码的
     //    pb 是现役来源，此步仅作对照/兜底——日常刷新用 --offline 保留本机 pb）
-    let mut tank_count = manifest.tank_count;
     if !offline {
         eprintln!("Downloading BlitzKit definitions ...");
         let n = tokio::runtime::Runtime::new()?
             .block_on(wotb_agent::wargaming::blitzkit::fetch_and_save(output))?;
-        tank_count = Some(n);
         println!("  BlitzKit: downloaded tanks.pb + models.pb ({} tanks)", n);
     } else {
         println!("  BlitzKit: skipped (--offline)");
     }
 
-    // 2. 重建 tank_cache.json（与 fetch-tanks 同链路）
-    let resolver = TankResolver::from_blitzkit()?;
-    resolver.save_to_json_file(tank_cache_path)?;
-    println!(
-        "  Tank cache: rebuilt {} ({} tanks)",
-        tank_cache_path.display(),
-        resolver.len()
-    );
-
-    // 3. 提取 game_data（版本变化或 --force 全量重提，否则增量补缺失）
+    // 2. 提取 game_data（版本变化或 --force 全量重提，否则增量补缺失）
+    //    必须先于 tank_cache 重建：装甲摘要的客户端优先链读的就是 game_data；旧顺序
+    //    在空目录上重建 cache 会静默落到“取最大板厚”近似（2026-11-06 超测 r2/r3 事故）。
     let full = force || version_changed;
     if full {
         eprintln!("Re-extracting ALL game_data (version changed or --force) ...");
@@ -2026,6 +2017,41 @@ fn cmd_update_data(
         stats.missing_files,
         stats.parse_failed + stats.write_failed,
         if full { "full" } else { "incremental" }
+    );
+    let tank_total = wotb_agent::wargaming::blitzkit::load_tanks().len();
+    // 以磁盘上的实际覆盖计数（--force 时 stats 只统计本次重提，预置的基线文件不算
+    // cached；用 stats 会把 743/743 误报成 5/743，也会写错 data_version）。
+    let game_data_files = std::fs::read_dir(game_data_dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+                .count()
+        })
+        .unwrap_or(0);
+    if tank_total > 0 && game_data_files == 0 {
+        anyhow::bail!(
+            "game_data 为空（{} 辆坦克，0 份提取）：拒绝在空装甲模型上重建 tank_cache \
+             （否则所有装甲摘要会回退成“取最大板厚”近似）",
+            tank_total
+        );
+    }
+    if game_data_files < tank_total {
+        eprintln!(
+            "  warning: game_data 覆盖 {}/{} 辆（缺 {} 辆）；缺失车的装甲摘要将回退 BlitzKit 近似",
+            game_data_files,
+            tank_total,
+            tank_total - game_data_files
+        );
+    }
+
+    // 3. 重建 tank_cache.json（与 fetch-tanks 同链路；此时 game_data 已就位）
+    let resolver = TankResolver::from_blitzkit()?;
+    resolver.save_to_json_file(tank_cache_path)?;
+    let tank_count = Some(resolver.len());
+    println!(
+        "  Tank cache: rebuilt {} ({} tanks)",
+        tank_cache_path.display(),
+        resolver.len()
     );
 
     // 4. 可选：补缺失的坦克图标 / GLB 模型预热（只补缺失项，已有缓存自动跳过）
@@ -2072,12 +2098,15 @@ fn cmd_update_data(
         tank_cache_updated_at: Some(now_rfc3339()),
         game_data_updated_at: Some(now_rfc3339()),
         tank_count,
-        game_data_files: Some(stats.extracted + stats.cached),
+        game_data_files: Some(game_data_files),
     }
     .save()?;
 
     println!("  Manifest: data/data_version.json updated");
-    println!("Note: armor summary now comes from BlitzKit models.pb; legacy armor_cache.json is retired.");
+    println!(
+        "Note: armor summary prefers client game_data/{{id}}.json (primary plates); \
+         missing game_data falls back to BlitzKit models.pb max-plate approximation."
+    );
     Ok(())
 }
 

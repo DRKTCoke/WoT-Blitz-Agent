@@ -113,9 +113,9 @@ data/research/
   devices.json                 # {devices:[24 {id, stem, icon, nameKey, descrKey, script, displayParams}],
                                #   presets:{9 预设名 → 9 槽 × [left, right]},
                                #   unused:["stereoscope"]}
-  consumables.json             # 64 条 {id, stem, mode, nameKey, icon, category, tags,
-                               #   script, displayParams, filter}
-  provisions.json              # 85 条（同构）
+  consumables.json             # 现役 64 条 / supertest r4 65 条 {id, stem, mode, nameKey, icon,
+                               #   category, tags, script, displayParams, filter, isAbility}
+  provisions.json              # 现役 85 条 / supertest r4 89 条（同构；tier 过滤器 max=11）
   consumables_default.json     # 客户端按 tier 默认表 + 单车覆盖（初始预填用）
   params/structure.json        # hangarParamsStructureConfig 分组树（param/subsection/table/…）
   params/format.json           # 每参数 {units, digits, biggerIsBetter}
@@ -191,6 +191,20 @@ data/research/
 // 逐车模块数据（modules/{nation}.json）
 interface VehicleModules {
   tankId: number
+  tier: number                     // 11 = XI；upgradeProgression 仅该档
+  gameVersion?: string             // XI 必填，须等于 upgradeProgression.provenance.gameVersion
+  upgradeProgression?: {           // 客户端 <upgradeProgression> → WotbTools 投影输入
+    nodes: { id: number, techName: string,
+             type: 'NODETYPE_COMMON'|'NODETYPE_MECHANIC'|'NODETYPE_ALTERNATIVE_MECHANIC',
+             attributes: { name: string, value: number|boolean }[] }[]
+    alternativeGroups: { id: string, choices: number[], icon?: string,
+                         displayName?: string, description?: string }[]
+    attributeDefinitions: Record<string, { modifier: 'MODIFIER_ADD'|'MODIFIER_MULTIPLY'|'MODIFIER_BOOLEAN',
+                                           script?: string, params?: Record<string,string>,
+                                           icon?: string, title?: string }>
+    provenance: { gameVersion: string, source: string, sha256: string,
+                  attributesSource: string, attributesSha256: string }
+  }
   consumableSlots: number          // 1..3
   provisionSlots: number           // 0..3
   optDevicePreset: string          // 9 预设之一 → devices.json
@@ -585,7 +599,8 @@ interface VehicleSetup {
 3. **基准**：初始配置（config 0）+ 首档发动机/履带 + 空装备 + 空物品 + 关涂装；装备槽默认全空
    （BK 语义，客户端不可卸下）。
 4. **默认消耗品**：客户端 `consumablesDefault.yaml` 的 tier 表先按 vehicleFilter + 槽位过滤
-   （tier 5 表 4 件 → T-34 3 槽取前 3）；补给默认空。
+   （tier 5 表 4 件 → T-34 3 槽取前 3）；补给默认空。t11p2 客户端该表仍无 tier 11 条目，
+   XI 默认不预选，但 `consumables/provisions` 的 `vehicleFilter.tiers.max=11` 使可选项正常显示。
 5. **模型联动**：不嵌入 3D 宿主；`?config=` 由配置器写、装甲查看器入口携带，模型/板值在查看器里
    随该下标切换（§6.4 的契约路径）。参数区与弹种表穿深同步为引擎输出。
 6. **弹种分类**：`ap` / `ap_premium` / `ap_cr` / `ap_cr_premium` ×1.06；`hc` / `hc_premium` /

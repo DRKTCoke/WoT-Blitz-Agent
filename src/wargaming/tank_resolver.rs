@@ -26,6 +26,10 @@ pub struct TankInfo {
     pub shells: Vec<ShellData>,
     #[serde(default)]
     pub hp: Option<u32>,
+    /// 顶级配置总 HP（仅 XI：`hp` + 升级树 `ATTRIBUTE_NAME_MAX_HEALTH` 节点）。
+    /// 缺省时省略字段，旧 cache/普通车保持原 JSON 形状。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hp_top: Option<u32>,
     #[serde(default)]
     pub speed_forward: Option<u32>,
     #[serde(default)]
@@ -301,6 +305,7 @@ impl TankResolver {
         let mut resolver = Self::new();
 
         let tanks = crate::wargaming::blitzkit::load_tanks();
+        let top_hp = load_top_hp_map();
 
         for (id, tank) in tanks.iter() {
             let name = tank.name.clone();
@@ -375,6 +380,7 @@ impl TankResolver {
                     armor,
                     shells,
                     hp,
+                    hp_top: top_hp.get(id).copied(),
                     speed_forward,
                     speed_reverse,
                     hull_traverse,
@@ -396,6 +402,35 @@ impl Default for TankResolver {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// XI 顶级 HP 旁路表（`data/upgrade_top_hp.json`，由 export_research_loadout.py 从
+/// 客户端 `<upgradeProgression>` 生成）。文件可选：普通车/旧数据集没有它时返回空表，
+/// `TankInfo.hp_top` 保持 None，不影响 `hp` 的既有口径。
+fn load_top_hp_map() -> HashMap<u32, u32> {
+    let path = crate::data::data_path("upgrade_top_hp.json");
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) else {
+        eprintln!(
+            "warning: {} is not valid JSON; hp_top disabled",
+            path.display()
+        );
+        return HashMap::new();
+    };
+    doc.get("tanks")
+        .and_then(|v| v.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| {
+                    let id = k.parse::<u32>().ok()?;
+                    let hp = v.as_u64()?;
+                    Some((id, hp as u32))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// 提取装甲摘要（前/侧/后，mm）：优先用游戏提取的精确装甲模型（game_data/{id}.json，

@@ -98,6 +98,13 @@ def load_dvpl_xml(path: pathlib.Path) -> ET.Element:
     return ET.fromstring(decode_dvpl(path.read_bytes()))
 
 
+def load_dvpl_xml_bytes(path: pathlib.Path) -> tuple[bytes, ET.Element]:
+    """解码后的 XML 字节 + 根元素：provenance 的 sha256 用**解码后**内容
+    （与 WotbTools fixture 的 `upgradeProgression.provenance.sha256` 同口径）。"""
+    raw = decode_dvpl(path.read_bytes())
+    return raw, ET.fromstring(raw)
+
+
 def ftext(el: ET.Element | None, tag: str) -> str | None:
     if el is None:
         return None
@@ -166,6 +173,204 @@ def parse_cost(raw: str | None) -> dict:
     if raw.isdigit():
         return {"xp": int(raw)}
     return {"raw": raw}
+
+
+# XI 升级节点的 nodeType 是 WotbTools `resolveUpgradeSelection` 的封闭枚举；
+# 出现未知值时 fail-closed（不导出一个消费方无法解释的节点）。
+UPGRADE_NODE_TYPES = (
+    "NODETYPE_COMMON",
+    "NODETYPE_MECHANIC",
+    "NODETYPE_ALTERNATIVE_MECHANIC",
+)
+
+
+def parse_upgrade_attribute_value(raw: str | None) -> bool | int | float:
+    """升级节点 `<value>`：布尔 / 整数 / 浮点。非数值文本直接报错（不猜）。"""
+    text = (raw or "").strip()
+    if text.lower() == "true":
+        return True
+    if text.lower() == "false":
+        return False
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise ValueError(f"upgrade attribute value is not numeric/boolean: {raw!r}") from exc
+
+
+def parse_upgrade_attributes(root: ET.Element) -> dict[str, dict]:
+    """`vehicles/common/tank_upgrade_attributes.xml` → attributeName → 定义。
+
+    保留客户端的 modifier / script（内联 `<params>` 展开为键值）/ icon / title；
+    WotbTools 的 `attributeDefinitions` 契约正是这四类字段。
+    """
+    out: dict[str, dict] = {}
+    for el in root.findall("./attributes/attribute"):
+        name = ftext(el, "attributeName")
+        modifier = ftext(el, "modifier")
+        if not name or not modifier:
+            raise ValueError("upgrade attribute without attributeName/modifier (fail-closed)")
+        entry: dict = {"modifier": modifier}
+        script_el = el.find("script")
+        if script_el is not None:
+            script = (script_el.text or "").strip()
+            if script:
+                entry["script"] = script
+            params_el = script_el.find("params")
+            if params_el is not None:
+                params = {
+                    child.tag: (child.text or "").strip()
+                    for child in params_el
+                    if isinstance(child.tag, str)
+                }
+                if params:
+                    entry["params"] = params
+        icon = ftext(el, "icon")
+        title = ftext(el, "title")
+        if icon:
+            entry["icon"] = icon
+        if title:
+            entry["title"] = title
+        out[name] = entry
+    return out
+
+
+def parse_upgrade_progression(
+    el: ET.Element,
+    attribute_definitions: dict[str, dict],
+    game_version: str,
+    source: str,
+    source_sha256: str,
+    attributes_source: str,
+    attributes_sha256: str,
+) -> dict:
+    """车辆 XML `<upgradeProgression>` → WotbTools `UpgradeProgression` 形状。
+
+    节点按 id 唯一；`alternativeMechanicGroups` 的 `choices` 是
+    `<alternativeNodes>` 里 techName 对号后的 id（客户端只给 techName）。
+    """
+    nodes: list[dict] = []
+    ids: set[int] = set()
+    by_tech: dict[str, int] = {}
+    for node_el in el.findall("./nodes/node"):
+        node_id = fint(node_el, "id")
+        tech_name = ftext(node_el, "techName")
+        node_type = ftext(node_el, "nodeType")
+        if node_id is None or not tech_name or node_type not in UPGRADE_NODE_TYPES:
+            raise ValueError(
+                f"invalid upgrade node (id={node_id!r}, techName={tech_name!r}, type={node_type!r})"
+            )
+        if node_id in ids:
+            raise ValueError(f"duplicate upgrade node id {node_id}")
+        if tech_name in by_tech:
+            raise ValueError(f"duplicate upgrade node techName {tech_name}")
+        ids.add(node_id)
+        by_tech[tech_name] = node_id
+        attributes = []
+        for attr_el in node_el.findall("./attributes/attribute"):
+            name = ftext(attr_el, "attributeName")
+            if not name:
+                raise ValueError(f"upgrade node {node_id} has an attribute without name")
+            if name not in attribute_definitions:
+                raise ValueError(f"upgrade attribute {name} has no definition (fail-closed)")
+            attributes.append({
+                "name": name,
+                "value": parse_upgrade_attribute_value(ftext(attr_el, "value")),
+            })
+        node = {
+            "id": node_id,
+            "techName": tech_name,
+            "type": node_type,
+            "attributes": attributes,
+        }
+        # 节点级展示元数据：客户端只在部分节点（多为 alternative 选项）给出；
+        # 有则保留（与 WotbTools fixture 同形状），没有就不写字段。
+        for key in ("displayName", "description", "icon"):
+            value = ftext(node_el, key)
+            if value:
+                node[key] = value
+        nodes.append(node)
+
+    groups = []
+    grouped_nodes: set[int] = set()
+    group_ids: set[str] = set()
+    for group_el in el.findall("./alternativeMechanicGroups/alternativeMechanicGroup"):
+        group_id = ftext(group_el, "techName")
+        if not group_id or group_id in group_ids:
+            raise ValueError(f"invalid/duplicate upgrade group id {group_id!r}")
+        group_ids.add(group_id)
+        choices = []
+        for alt_el in group_el.findall("./alternativeNodes/node"):
+            tech_name = (alt_el.text or "").strip()
+            if tech_name not in by_tech:
+                raise ValueError(f"upgrade group {group_id} references unknown node {tech_name!r}")
+            node_id = by_tech[tech_name]
+            if node_id in grouped_nodes:
+                raise ValueError(f"upgrade node {node_id} assigned to multiple groups")
+            grouped_nodes.add(node_id)
+            choices.append(node_id)
+        if not choices:
+            raise ValueError(f"upgrade group {group_id} has no alternative nodes")
+        group = {"id": group_id, "choices": choices}
+        for key in ("icon", "displayName", "description"):
+            value = ftext(group_el, key)
+            if value:
+                group[key] = value
+        groups.append(group)
+
+    for node in nodes:
+        if node["type"] == "NODETYPE_ALTERNATIVE_MECHANIC" and node["id"] not in grouped_nodes:
+            raise ValueError(f"ungrouped alternative upgrade node {node['techName']}")
+
+    # 只带本车节点实际引用的定义（与 WotbTools fixture 同口径）：属性表是全局的
+    # 98 条，逐车全量复制会无谓放大模块 JSON；消费方只按节点属性名查表。
+    used = {attr["name"] for node in nodes for attr in node["attributes"]}
+    used_definitions = {name: attribute_definitions[name] for name in sorted(used)}
+
+    return {
+        "nodes": nodes,
+        "alternativeGroups": groups,
+        "attributeDefinitions": used_definitions,
+        "provenance": {
+            "gameVersion": game_version,
+            "source": source,
+            "sha256": source_sha256,
+            "attributesSource": attributes_source,
+            "attributesSha256": attributes_sha256,
+        },
+    }
+
+
+def upgrade_top_hp(tank: dict, progression: dict) -> int | None:
+    """顶级配置总 HP = 车体 HP + 顶炮塔 HP + 所有 MAX_HEALTH 升级节点。
+
+    顶级选择语义与 WotbTools `resolveUpgradeSelection(mode='top')` 一致：
+    所有非 alternative 节点 + 每个 alternative group 的首个 choice。
+    """
+    hull = tank.get("hull") or {}
+    turrets = tank.get("turrets") or []
+    if hull.get("hp") is None or not turrets:
+        return None
+    turret_hp = (turrets[-1].get("stats") or {}).get("maxHealth")
+    if turret_hp is None:
+        return None
+    selected = {
+        node["id"] for node in progression["nodes"]
+        if node["type"] != "NODETYPE_ALTERNATIVE_MECHANIC"
+    }
+    for group in progression["alternativeGroups"]:
+        selected.add(group["choices"][0])
+    bonus = 0.0
+    for node in progression["nodes"]:
+        if node["id"] not in selected:
+            continue
+        for attr in node["attributes"]:
+            if attr["name"] == "ATTRIBUTE_NAME_MAX_HEALTH":
+                bonus += float(attr["value"])
+    return int(round(float(hull["hp"]) + float(turret_hp) + bonus))
 
 
 def module_common_fields(el: ET.Element, shared: ET.Element | None, resolver_local_id: int | None,
@@ -458,9 +663,12 @@ def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, d
                 "script": parse_item_script(el),
                 "displayParams": parse_display_params(el),
                 "filter": parse_filter(el.find("vehicleFilter")),
-                # 战斗内技能（isAbility）：不是机库装配项（如 desertPower 还有 geometryFilter），
-                # 配置器物品池必须排除；语义标记来自客户端 XML，不按名称/缺少文案判定。
-                "isAbility": el.find("isAbility") is not None,
+                # 战斗内技能（isAbility / XI 的 isVehicleAbility）：不是机库装配项
+                # （如 desertPower 还有 geometryFilter；XI 的 steadyAimSystem 等由
+                # upgradeProgression 节点表达），配置器物品池必须排除；语义标记来自
+                # 客户端 XML，不按名称/缺少文案判定。
+                "isAbility": el.find("isAbility") is not None
+                or el.find("isVehicleAbility") is not None,
             }
             for lang, table in tables_by_lang.items():
                 item[f"name_{lang}"] = flat_lookup(table, user)
@@ -470,6 +678,53 @@ def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, d
             items.append(item)
     items.sort(key=lambda x: (x["mode"] != "common", x["id"]))
     return items
+
+
+def write_item_catalogs(game_data: pathlib.Path, out_root: pathlib.Path, version: str,
+                        tables_by_lang: dict[str, dict], generated_at: str) -> None:
+    """预览客户端增量：刷新全局 consumables/provisions（含 tier 11 过滤器与 XI 能力条目）。
+
+    只改全局物品目录，不重导车辆模块；`meta.json` 的计数与逐文件 sha 同步刷新。
+    """
+    import yaml as _y
+
+    consumables = export_items(game_data, "consumables", tables_by_lang)
+    provisions = export_items(game_data, "provisions", tables_by_lang)
+    catalog = {
+        "consumables.json": {"meta": {"gameVersion": version, "count": len(consumables)},
+                             "items": consumables},
+        "provisions.json": {"meta": {"gameVersion": version, "count": len(provisions)},
+                            "items": provisions},
+    }
+    default_path = game_data / "XML/item_defs/vehicles/common/consumablesDefault.yaml.dvpl"
+    if default_path.exists():
+        raw = _y.safe_load(decode_dvpl(default_path.read_bytes()).decode("utf-8")) or {}
+        catalog["consumables_default.json"] = {
+            "meta": {"gameVersion": version},
+            "byTier": {k: v for k, v in raw.items() if str(k).isdigit()},
+            "overrides": {k: v for k, v in raw.items() if not str(k).isdigit()},
+        }
+    out_root.mkdir(parents=True, exist_ok=True)
+    for name, payload in catalog.items():
+        (out_root / name).write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    meta_path = out_root / "meta.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        counts = meta.setdefault("counts", {})
+        counts["consumables"] = len(consumables)
+        counts["provisions"] = len(provisions)
+        counts["consumablesCommon"] = sum(1 for x in consumables if x["mode"] == "common")
+        counts["provisionsCommon"] = sum(1 for x in provisions if x["mode"] == "common")
+        files = meta.setdefault("files", {})
+        for name in catalog:
+            data = (out_root / name).read_bytes()
+            files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+        meta["itemsGeneratedAt"] = generated_at
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")),
+                             encoding="utf-8")
+    print(f"items: consumables={len(consumables)} provisions={len(provisions)} "
+          f"(version {version})")
 
 
 def export_devices(game_data: pathlib.Path, names_by_lang: dict[str, Names],
@@ -1064,15 +1319,20 @@ def main() -> None:
                          "预览增量可给只含新增车的映射）")
     ap.add_argument("--modules-only", action="store_true",
                     help="只导出逐车 modules/*.json（预览客户端增量；不改装备/参数/图标）")
+    ap.add_argument("--items-only", action="store_true",
+                    help="只刷新全局 consumables/provisions/consumables_default（预览客户端"
+                         "增量；不改车辆模块）")
     ap.add_argument("--merge", action="store_true",
                     help="与 --modules-only 连用：把本次导出的车并入既有 modules/*.json，"
                          "保留其余车")
     args = ap.parse_args()
     if args.merge and not args.modules_only:
         ap.error("--merge 只能与 --modules-only 连用")
+    if args.items_only and (args.modules_only or args.with_research_graph or args.merge):
+        ap.error("--items-only 不能与 --modules-only/--with-research-graph/--merge 连用")
     langs = [x.strip() for x in args.langs.split(",") if x.strip()]
     out_root = REPO_ROOT / args.out
-    if not args.modules_only:
+    if not args.modules_only and not args.items_only:
         # 防回退门禁：data/research 是 SSOT 快照，XI 预览合并（--modules-only --merge）
         # 的成果不能被一次 11.21 全量导出静默冲掉（真实事故：740 → 738）。
         prev_meta_p = out_root / "meta.json"
@@ -1091,6 +1351,19 @@ def main() -> None:
     version = decode_dvpl((game_data / "version.txt.dvpl").read_bytes()).decode("utf-8").strip()
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # XI 升级属性定义（modifier/script/params/icon/title）。11.21 现役客户端没有这个
+    # 文件且没有 XI；只有遇到带 <upgradeProgression> 的车时才要求它存在（fail-closed）。
+    upgrade_attr_rel = "XML/item_defs/vehicles/common/tank_upgrade_attributes.xml.dvpl"
+    upgrade_attr_path = game_data / upgrade_attr_rel
+    upgrade_attribute_definitions: dict[str, dict] | None = None
+    upgrade_attributes_sha256: str | None = None
+    if upgrade_attr_path.exists():
+        attr_raw, attr_root = load_dvpl_xml_bytes(upgrade_attr_path)
+        upgrade_attribute_definitions = parse_upgrade_attributes(attr_root)
+        upgrade_attributes_sha256 = hashlib.sha256(attr_raw).hexdigest()
+    # tank_id -> 顶级总 HP（车体 + 顶炮塔 + MAX_HEALTH 节点）；Rust tank_cache 消费。
+    top_hp_by_tank: dict[int, int] = {}
+
     if args.tech_tree_extra and not args.with_research_graph:
         ap.error("--tech-tree-extra 只能与 --with-research-graph 连用")
     if args.with_research_graph and args.modules_only:
@@ -1106,6 +1379,10 @@ def main() -> None:
         # 基础 Strings 之后补运行时覆盖层（只补缺键，基础表优先）
         for key, value in load_localization_overlay(lang).items():
             tables_by_lang[lang].setdefault(key, value)
+
+    if args.items_only:
+        write_item_catalogs(game_data, out_root, version, tables_by_lang, generated_at)
+        return
 
     # ---------- 逐车模块 ----------
     # 模型碰撞盒 / 炮塔挂点：复用提取链的 Extractor（与 models.pb 同源同语义）。
@@ -1148,7 +1425,7 @@ def main() -> None:
             if not p.exists():
                 skipped += 1
                 continue
-            root = load_dvpl_xml(p)
+            xml_raw, root = load_dvpl_xml_bytes(p)
             hull = root.find("hull")
             list_el = v
             name_key = ftext(list_el, "userString")
@@ -1200,6 +1477,29 @@ def main() -> None:
                     sh = fuel_shared.get(m["stem"])
                     if sh is not None and m["stats"]["weight"] is None:
                         m["stats"]["weight"] = ffloat(sh, "weight")
+            # XI 升级树（客户端 <upgradeProgression>）：节点/备选组/属性定义 + 来源
+            # provenance。WotbTools 的 projectTankUpgrades 以此投影顶级配置；没有该块
+            # 的普通车不写字段，保持原模块 JSON 形状。
+            upgrade_el = root.find("upgradeProgression")
+            if upgrade_el is not None:
+                if upgrade_attribute_definitions is None:
+                    raise RuntimeError(
+                        f"{nation}/{stem} 含 upgradeProgression，但缺少 "
+                        f"{upgrade_attr_rel}（fail-closed）")
+                progression = parse_upgrade_progression(
+                    upgrade_el,
+                    upgrade_attribute_definitions,
+                    version,
+                    f"client:XML/item_defs/vehicles/{nation}/{stem}.xml.dvpl",
+                    hashlib.sha256(xml_raw).hexdigest(),
+                    "client:XML/item_defs/vehicles/common/tank_upgrade_attributes.xml.dvpl",
+                    upgrade_attributes_sha256 or "",
+                )
+                tank["gameVersion"] = version
+                tank["upgradeProgression"] = progression
+                hp_top = upgrade_top_hp(tank, progression)
+                if hp_top is not None:
+                    top_hp_by_tank[tid] = hp_top
             # 车辆模型碰撞盒（尺寸参数）：车体/底盘盒在车辆级，炮塔盒挂在逐炮塔上
             # （随所选炮塔变）。turretOrigin 是 XML <turretPositions> 的 [x, 上, 前]，
             # 与包围盒坐标 [x, 前, 上] 的换算在前端 compute 中完成（见 §5 公式表）。
@@ -1247,6 +1547,23 @@ def main() -> None:
         (out_root / "modules").mkdir(parents=True, exist_ok=True)
         (out_root / "modules" / f"{nation}.json").write_text(
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # 顶级 HP 旁路表：Rust `TankResolver::from_blitzkit` 读它写 `tank_cache.hp_top`
+    # （资产包本身只带 tank_cache 的 `hp_top`，不依赖此文件）。预览 merge 保留既有条目。
+    top_hp_path = out_root.parent / "upgrade_top_hp.json"
+    merged_top_hp: dict[int, int] = {}
+    if args.merge and top_hp_path.exists():
+        previous = json.loads(top_hp_path.read_text(encoding="utf-8"))
+        merged_top_hp.update({
+            int(k): int(v) for k, v in (previous.get("tanks") or {}).items()
+        })
+    merged_top_hp.update(top_hp_by_tank)
+    if merged_top_hp:
+        top_hp_path.write_text(json.dumps({
+            "meta": {"gameVersion": version, "count": len(merged_top_hp)},
+            "tanks": {str(k): merged_top_hp[k] for k in sorted(merged_top_hp)},
+        }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"   [upgrade] top HP: {len(merged_top_hp)} tanks -> {top_hp_path}")
 
     if args.modules_only:
         # bridge 是这次要导出的权威清单；任何一个条目没落到输出都必须失败，

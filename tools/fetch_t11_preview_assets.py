@@ -77,9 +77,15 @@ def select_members(entries: dict[str, tuple[int, int]],
             take(name, "techtree")
         elif "/xml/item_defs/vehicles/" in low and low.endswith(".xml.dvpl"):
             # list + 共享组件：研发边/模块联表/提取链的公共输入（全量 ~70 文件）。
+            # `common/tank_upgrade_attributes.xml.dvpl` 是 XI 升级节点的属性定义表
+            # （modifier/script/params），WotbTools 的 upgradeProgression 契约必需。
             # 车辆**定义** XML 不在此处——只按 bridge 车 + --xml-list 显式拉取
             # （t11b↔t11p2 的 CRC 对比证明其余车辆逐字节未变）。
-            if low.endswith("/list.xml.dvpl") or "/components/" in low:
+            if low.endswith("/list.xml.dvpl") or "/components/" in low \
+                    or low.endswith("/vehicles/common/tank_upgrade_attributes.xml.dvpl") \
+                    or "/vehicles/common/consumables/" in low \
+                    or "/vehicles/common/provisions/" in low \
+                    or low.endswith("/vehicles/common/consumablesdefault.yaml.dvpl"):
                 take(name, "vehicle-shared-xml")
         elif low.startswith("app/data/3d/tanks/common/"):
             # 共享贴图/履带印贴图（~1.6MB）：GLB 材质可能跨目录引用 Common/images。
