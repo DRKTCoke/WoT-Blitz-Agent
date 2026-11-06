@@ -35,28 +35,43 @@ sys.path.insert(0, str(TOOLS))
 
 # 路径 → 数据面。顺序敏感：先具体后通用。
 PLANES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
+    ("vehicle-roster", re.compile(r"^XML/item_defs/vehicles/(?!common/)([^/]+)/list\.xml\.dvpl$"),
+     ("data/tanks.pb", "data/models.pb", "data/tank_cache.json", "tank/", "game_data/",
+      "research/modules/", "research/tech_tree/")),
+    ("vehicle-components", re.compile(
+        r"^XML/item_defs/vehicles/(?!common/)([^/]+)/components/.*\.xml\.dvpl$"),
+     ("data/tanks.pb", "data/models.pb", "tank/", "game_data/")),
     ("vehicle-xml", re.compile(r"^XML/item_defs/vehicles/(?!common/)([^/]+)/([^/]+)\.xml\.dvpl$"),
-     ("tank/", "game_data/", "data/tanks.pb", "data/tank_cache.json", "research/modules/",
-      "research/tech_tree/")),
+     ("tank/", "game_data/", "data/tanks.pb", "data/models.pb", "data/tank_cache.json",
+      "research/modules/", "research/tech_tree/")),
     ("vehicle-params", re.compile(r"^3d/Tanks/Parameters/([^/]+)/([^/]+)\.yaml\.dvpl$"),
      ("game_data/", "glb/", "suspension/", "tread/")),
-    ("vehicle-model", re.compile(r"^3d/Tanks/(?!Parameters/)(?:[^/]+/)?([^/]+)"),
+    ("vehicle-model", re.compile(
+        r"^3d/Tanks/(?!Parameters/)([^/]+)/([^/]+?)\.(?:sc2|scg)(?:\.dvpl)?$"),
      ("glb/", "tank_images/")),
     ("shared-xml", re.compile(r"^XML/item_defs/vehicles/common/"),
-     ("research/",)),
+     ("data/tanks.pb", "data/models.pb", "tank/", "game_data/", "research/")),
     ("techtree", re.compile(r"^Configs/TechTree/.*_tree\.yaml\.dvpl$"),
      ("research/tech_tree/",)),
     ("strings", re.compile(r"^Strings/(?:en|zh-Hans)\.yaml\.dvpl$"),
      ("research/strings/",)),
-    ("tank-icons", re.compile(r"^Gfx/UI/(?:BigTankIcons|BattleScreenHUD/SmallTankIcons)/"),
-     ("tank_images/", "cover/")),
-    ("maps", re.compile(r"^(?:maps/|3d/Maps/)"),
-     ("map/", "map2d/")),
+    ("tank-icons", re.compile(
+        r"^Gfx/UI/(?:BigTankIcons|BattleScreenHUD/SmallTankIcons)/([^/]+?)(?:\.packed)?\.webp\.dvpl$"),
+     ("tank_images/",)),
+    ("maps", re.compile(r"^(?:maps/([^/]+)(?:/|$)|3d/Maps/([^/]+)/)"),
+     ("map/", "map2d/", "cover/")),
+    ("map-registry", re.compile(r"^maps\.yaml\.dvpl$"),
+     ("map/", "map2d/", "cover/", "index.json")),
     ("ui", re.compile(r"^(?:Gfx/|UI/|Audio/|Shaders/|Fonts/|HtmlDocuments/|Cinema/|"
                       r"Videos/|Sounds/|Packs/|DAVAProject/)"),
      ()),
 ]
 NON_DATA_PLANES = {"ui"}
+# 会影响整表 pb/cache（无法按车安全拆成独立文件）的数据面。
+CORE_PLANES = {"vehicle-roster", "vehicle-components", "vehicle-xml", "vehicle-params",
+               "vehicle-model", "shared-xml"}
+WHOLE_TABLE = ("tanks.pb", "models.pb", "tank_cache.json", "shell_kinds.json",
+               "gun_mask_slices.json", "data_version.json")
 
 
 def digest_dir(root: pathlib.Path) -> dict[str, dict]:
@@ -116,12 +131,17 @@ def classify(rel: str) -> tuple[str, dict]:
         if match:
             detail: dict = {}
             groups = match.groups()
-            if plane == "vehicle-xml" and len(groups) >= 2:
-                detail = {"nation": groups[0], "stem": groups[1]}
-            elif plane == "vehicle-params" and len(groups) >= 2:
-                detail = {"nation": groups[0], "stem": groups[1]}
-            elif plane == "vehicle-model" and groups:
+            if plane in {"vehicle-roster", "vehicle-components"} and groups:
+                detail = {"nation": groups[0].lower()}
+            elif plane in {"vehicle-xml", "vehicle-params", "vehicle-model"} and len(groups) >= 2:
+                detail = {"nation": groups[0].lower(), "stem": groups[1]}
+            elif plane == "tank-icons" and groups:
                 detail = {"stem": groups[0]}
+            elif plane == "maps" and groups:
+                if groups[0]:
+                    detail = {"key": groups[0]}
+                elif groups[1]:
+                    detail = {"space": groups[1]}
             return plane, detail
     return "unmapped", {}
 
@@ -140,6 +160,65 @@ def _pack_manifest(path: str | None) -> dict[str, str] | None:
             for entry in json.loads(pathlib.Path(path).read_text(encoding="utf-8"))["files"]}
 
 
+def _path(value: str) -> pathlib.Path:
+    p = pathlib.Path(value)
+    return p if p.is_absolute() else ROOT / p
+
+
+def _sha(path: pathlib.Path) -> str | None:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+
+def load_bridge(paths: list[str]) -> tuple[dict[tuple[str, str], int], dict[str, list[int]], list[str]]:
+    """加载 id → {nation,stem} 的 bridge，建立反向索引；重复键 fail-closed。"""
+    by_pair: dict[tuple[str, str], int] = {}
+    by_stem: dict[str, list[int]] = {}
+    problems: list[str] = []
+    for raw in paths:
+        path = _path(raw)
+        if not path.is_file():
+            problems.append(f"bridge missing: {path}")
+            continue
+        for tid, info in json.loads(path.read_text(encoding="utf-8")).items():
+            if not isinstance(info, dict) or not info.get("stem"):
+                problems.append(f"bridge entry invalid: {path}#{tid}")
+                continue
+            stem, nation = str(info["stem"]), info.get("nation")
+            try:
+                tank_id = int(tid)
+            except ValueError:
+                problems.append(f"bridge id invalid: {path}#{tid}")
+                continue
+            if nation:
+                key = (str(nation), stem)
+                if key in by_pair and by_pair[key] != tank_id:
+                    problems.append(f"bridge ambiguous {key}: {by_pair[key]} vs {tank_id}")
+                by_pair.setdefault(key, tank_id)
+            by_stem.setdefault(stem, []).append(tank_id)
+    return by_pair, by_stem, problems
+
+
+def resolve_tank(by_pair: dict[tuple[str, str], int], by_stem: dict[str, list[int]],
+                 nation: str | None, stem: str) -> int | None:
+    if nation and (nation, stem) in by_pair:
+        return by_pair[(nation, stem)]
+    ids = sorted(set(by_stem.get(stem, [])))
+    return ids[0] if len(ids) == 1 else None
+
+
+def load_map_registry(path: str) -> tuple[dict[str, list[dict]], dict[str, dict], list[str]]:
+    p = _path(path)
+    if not p.is_file():
+        return {}, {}, [f"map index missing: {p}"]
+    rows = json.loads(p.read_text(encoding="utf-8"))
+    by_space: dict[str, list[dict]] = {}
+    by_key: dict[str, dict] = {}
+    for row in rows:
+        by_space.setdefault(row["space"], []).append(row)
+        by_key[row["key"]] = row
+    return by_space, by_key, []
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--base", required=True, help="默认版本 Data 根或 ZIP/URL")
@@ -149,8 +228,11 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="change_plan.json 输出路径")
     ap.add_argument("--base-pack-manifest", default=None)
     ap.add_argument("--new-pack-manifest", default=None)
+    ap.add_argument("--tank-bridge", default="data/tank_id_bridge.json")
+    ap.add_argument("--preview-bridge", default="data/preview_tank_id_bridge.json")
+    ap.add_argument("--map-index", default="map_index.json")
     ap.add_argument("--strict", action="store_true",
-                    help="unmapped/missing-output/orphan-output 非零退出")
+                    help="unmapped/unresolved/missing-output/orphan-output 非零退出")
     args = ap.parse_args()
 
     base = inventory(args.base)
@@ -159,9 +241,19 @@ def main() -> None:
     removed = sorted(set(base) - set(new))
     changed = sorted(p for p in set(base) & set(new) if not same_entry(base[p], new[p]))
 
+    bridges = [args.tank_bridge]
+    preview_path = _path(args.preview_bridge)
+    if preview_path.is_file():
+        bridges.append(args.preview_bridge)
+    by_pair, by_stem, bridge_problems = load_bridge(bridges)
+    by_space, by_key, map_problems = load_map_registry(args.map_index)
     planes: dict[str, dict] = {}
     unmapped: list[str] = []
     vehicle_stems: dict[str, dict[str, list[str]]] = {}
+    tanks: dict[str, dict] = {}
+    maps: dict[str, dict] = {}
+    unresolved_tanks: list[dict] = []
+    unresolved_maps: list[str] = []
     for kind, paths in (("added", added), ("changed", changed), ("removed", removed)):
         for rel in paths:
             plane, detail = classify(rel)
@@ -177,6 +269,59 @@ def main() -> None:
                                                                    "added": [], "changed": [],
                                                                    "removed": []})
                 bucket[kind].append(rel)
+                tid = resolve_tank(by_pair, by_stem, detail.get("nation"), detail["stem"])
+                if tid is None:
+                    unresolved_tanks.append({"rel": rel, "nation": detail.get("nation"),
+                                             "stem": detail["stem"], "plane": plane})
+                else:
+                    item = tanks.setdefault(str(tid), {
+                        "nation": detail.get("nation"), "stem": detail["stem"],
+                        "kinds": [], "files": {"added": [], "changed": [], "removed": []},
+                    })
+                    if plane not in item["kinds"]:
+                        item["kinds"].append(plane)
+                    item["files"][kind].append(rel)
+            if plane == "maps":
+                target = None
+                if "key" in detail:
+                    target = by_key.get(detail["key"])
+                    if target is None:
+                        unresolved_maps.append(rel)
+                elif "space" in detail:
+                    target = (by_space.get(detail["space"]) or [None])[0]
+                    if target is None:
+                        unresolved_maps.append(rel)
+                else:
+                    unresolved_maps.append(rel)
+                if target:
+                    space = target["space"]
+                    row = maps.setdefault(space, {"keys": [], "map_ids": [],
+                                                   "files": {"added": [], "changed": [],
+                                                             "removed": []}})
+                    for e in by_space.get(space, []):
+                        if e["key"] not in row["keys"]:
+                            row["keys"].append(e["key"])
+                        if e["map_id"] not in row["map_ids"]:
+                            row["map_ids"].append(e["map_id"])
+                    row["files"][kind].append(rel)
+
+    core_active = sorted(set(planes) & CORE_PLANES & {
+        p for p, d in planes.items() if d["added"] or d["changed"] or d["removed"]})
+    whole_table = list(WHOLE_TABLE) if core_active else []
+    map_registry_changed = bool(planes.get("map-registry", {}).get("added")
+                               or planes.get("map-registry", {}).get("changed")
+                               or planes.get("map-registry", {}).get("removed"))
+    pins = {
+        "tankBridge": _sha(_path(args.tank_bridge)),
+        "previewBridge": _sha(_path(args.preview_bridge)),  # optional; null if absent
+        "tanksPb": _sha(_path("data/tanks.pb")),
+        "modelsPb": _sha(_path("data/models.pb")),
+        "mapIndex": _sha(_path(args.map_index)),
+    }
+    if core_active:
+        missing_pin = [k for k, v in pins.items() if k != "previewBridge" and not v]
+        if missing_pin:
+            bridge_problems.append(f"pins missing: {missing_pin}")
 
     base_manifest = _pack_manifest(args.base_pack_manifest)
     new_manifest = _pack_manifest(args.new_pack_manifest)
@@ -213,7 +358,7 @@ def main() -> None:
         }
 
     plan = {
-        "schema": 1,
+        "schema": 2,
         "base": args.base,
         "new": args.new,
         "versions": {"base": args.base_version, "new": args.new_version},
@@ -232,9 +377,17 @@ def main() -> None:
             for name, data in sorted(planes.items())
         },
         "vehicles": vehicle_stems,
+        "tanks": tanks,
+        "maps": maps,
+        "wholeTable": whole_table,
+        "corePlanes": core_active,
+        "mapRegistryChanged": map_registry_changed,
+        "unresolvedTanks": unresolved_tanks,
+        "unresolvedMaps": sorted(unresolved_maps),
         "unmappedChanged": sorted(unmapped),
+        "pins": pins,
         "coverage": coverage,
-        "limitations": [],
+        "limitations": bridge_problems + map_problems,
     }
     pathlib.Path(args.out).write_text(json.dumps(plan, ensure_ascii=False, indent=1) + "\n",
                                       encoding="utf-8")
@@ -250,6 +403,14 @@ def main() -> None:
         problems = []
         if unmapped:
             problems.append(f"unmapped changed files: {unmapped[:10]}")
+        if unresolved_tanks:
+            problems.append(f"unresolved tank ids: {unresolved_tanks[:10]}")
+        if unresolved_maps:
+            problems.append(f"unresolved map paths: {unresolved_maps[:10]}")
+        if bridge_problems and (core_active or tanks or unresolved_tanks):
+            problems.append(f"bridge/pins: {bridge_problems[:10]}")
+        if map_problems and (maps or unresolved_maps):
+            problems.append(f"map registry: {map_problems[:10]}")
         if coverage:
             if coverage["missingOutput"]:
                 problems.append(f"missing output for planes: {[m['plane'] for m in coverage['missingOutput']]}")

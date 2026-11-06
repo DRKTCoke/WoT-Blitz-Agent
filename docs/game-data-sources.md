@@ -501,31 +501,50 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
    --out change_plan.json --base-pack-manifest <base>/manifest.json \
    --new-pack-manifest <new>/manifest.json --strict`
    - 目录按 sha256、ZIP 按 central-directory CRC32+size 做全量比较；
-   - 按路径语义分类到 `vehicle-xml` / `vehicle-params` / `vehicle-model` /
-     `shared-xml` / `techtree` / `strings` / `tank-icons` / `maps` / `ui` / `unmapped`；
+   - 按路径语义分类到 `vehicle-roster` / `vehicle-components` / `vehicle-xml` /
+     `vehicle-params` / `vehicle-model` / `shared-xml` / `techtree` / `strings` /
+     `tank-icons` / `maps` / `map-registry` / `ui` / `unmapped`；
+   - plan v2 追加 `tanks`（bridge 解析的 tank_id/kinds/files）、`maps`
+     （`map_index.json` 解析的 space → keys/map_ids）、`wholeTable`、`pins`
+     （bridge/pb/map_index 的 sha256）；未解析 tank/map 在 `--strict` 下失败；
    - 输出逐平面 added/changed/removed、车辆 stem、`unmappedChanged`，以及
      `missingOutput` / `orphanOutput`（配合新旧 pack manifest）；
    - `orphanOutput` 豁免发布元数据/索引与 pack 内派生件（`data/models.pb`、
      `data/tank_names.json`、`data/shellKinds.json`、`data/gunMaskSlices.json`、
      `data/data_version.json`），避免真实车型变更被派生输出误报为“无源”；
-   - `--strict` 对未识别变化或缺产物 fail-closed，不再静默跳过。
+   - `--strict` 对未识别变化、未解析 tank/map 或缺产物 fail-closed，不再静默跳过。
 2. `python tools/apply_data_version.py --base-pack <base> --out-pack <new> \
-   --game-data <new Data> --bridge ... --plan change_plan.json`
+   --game-data <new Data> --bridge ... --plan change_plan.json [--dry-run] [--only ...]`
    - 先以硬链接克隆 base pack（`research/**` 复制，避免写穿共享 inode）；
-   - 命中 research 相关平面时调用 `sync_preview_research.py` 做全平面增量
-     （modules/items/params/devices/camouflage/skills/strings；内容相同则保留原文件）；
-   - **vehicle-xml 例外**：只自动同步 `research/modules` / `research/tech_tree`；
-     同一平面还产出 `tank/*.json`、`data/tank_cache.json`、`game_data/`、`data/tanks.pb`，
-     这些不在 apply 范围，因此默认 fail-closed；
-   - 车辆模型/参数/图标/地图等尚未自动化的平面显式列为 `manualPlanes` 并 fail-closed，
-     避免“只更新了一部分就发布”；需要时走完整重建链或显式 `--allow-manual`；
-   - plan 里出现 `unmapped` 变化时直接拒绝 apply（先补 plane 规则，不允许静默跳过）；
-   - `--refresh-manifest` 后输出 `<out>.apply.json`（linked/copied、research 变更、待人工平面）。
+   - `research`：调用 `sync_preview_research.py` 做 modules/items/params/devices/
+     camouflage/skills/strings 全平面增量，内容相同保留原文件；
+   - `vehicle-assets`：按 plan.tanks 逐个调用原 `export_tank_glb.py --tank` /
+     `export_tank_suspension.py --tank` / `export_tank_tread.py --tank` /
+     `export_tank_icons.py --tank`；图标重新 `--emit-crops`，只覆盖哈希变化的文件，
+     被移除车同步删除；
+   - `core`（整表重建、只覆盖变化字节）：从 base pack 反向物化 `work/data/`（核心
+     pb/cache、game_data、cache/models 等），在 `work/` 下按原顺序运行
+     `wotb-agent update-data --force` → `dump-tank-data` → `dump-shell-kinds`；
+     `tanks.pb`/`models.pb`/`tank_cache` 整表重写，`game_data/{id}.json`、
+     `tank/{id}.json` 全量重算后逐文件 sha256 比较，只覆盖变化项。默认 `--offline`
+     复用 base pb；`--core-online` 允许更新 pb，roster/components 变化在 offline
+     下 fail-closed，需先准备新 pb；
+   - `maps`：按变化 space 重导 GLB/ground/光照/IBL（`export_map_glb.py --map` 等），
+     逐文件覆盖；`composite_overhead.py --map` 重合成；随后**整表**重跑
+     `materialize_destructible_variants.py` 与 `export_2d_basemaps.py`（用户选定），
+     重建 `index.json`/`map2d`/`cover` 索引；
+   - `unmapped`/未解析 tank/map/`maps.yaml` 注册表变化直接拒绝 apply；
+   - `--dry-run` 只打印各 handler 命令；`--only` 可单独排障；`--keep-work` 保留
+     `.work/` staging；`--gun-mask-slices` 在 pb 变化时提供同批 sidecar；
+     `--render-dir` 指定俯视渲染缓存；
+   - `--refresh-manifest` 后输出 `<out>.apply.json`（逐 handler reused/updated/deleted）。
 
-当前自动 apply 覆盖 **research 面**；车辆 GLB/图标/悬挂/履带、地图链仍沿用完整重建
-工具（`export_tank_glb.py` / `export_map_glb.py` 等），由 planner 的变化清单给出精确范围。
-`data_version.json` 在 apply 时追加 `base_game_version` / `new_game_version` /
-`source_plan_sha256` / `changed_planes` / `coverage`，便于回读审计。
+核心整表格式（`tanks.pb`/`models.pb`/`tank_cache`/`shellKinds`/`gunMaskSlices`）仍按原
+编码器整表重写，因为无法安全按车打补丁；但最终 pack 只覆盖哈希变化的字节，未变文件
+保持 base 硬链接。逐车 GLB/悬挂/履带/图标和地图 GLB/ground 只重导变化项；地图 2D/变体
+按选定口径整表重跑。`data_version.json` 追加 `base_game_version` / `new_game_version` /
+`source_plan_sha256` / `changed_planes` / `coverage` / `scope`（tanks/maps/wholeTable）/
+`inputs`（pins），便于回读审计。
 
 ### 5.2 资产 origin（Alibaba）增量发布流程
 
