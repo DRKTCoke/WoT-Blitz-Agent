@@ -131,14 +131,18 @@ def find_eocd(reader: RangeReader) -> tuple[int, int, int]:
     return cd_offset, cd_size, _total
 
 
-def parse_central_directory(reader: RangeReader, cd_offset: int, cd_size: int) -> dict[str, tuple[int, int]]:
+def parse_central_directory(reader: RangeReader, cd_offset: int, cd_size: int,
+                            with_meta: bool = False) -> dict[str, tuple[int, ...]]:
     """central directory → {name: (local_header_offset, compressed_size)}。
+
+    `with_meta=True` 时返回 `(local_header_offset, compressed_size, crc32, uncompressed_size)`，
+    供全量版本差异计划使用（只读 central directory，不下载成员）。
 
     ZIP64 extra field (id 0x0001) 按 central entry 的字段落位补齐
     （未压缩大小 / 压缩大小 / local header offset 依序只放 0xFFFFFFFF 的项）。
     """
     blob = reader.fetch_chunks(cd_offset, cd_offset + cd_size)
-    entries: dict[str, tuple[int, int]] = {}
+    entries: dict[str, tuple[int, ...]] = {}
     pos = 0
     sig = struct.pack("<I", 0x02014B50)
     while pos + 46 <= len(blob):
@@ -148,7 +152,7 @@ def parse_central_directory(reader: RangeReader, cd_offset: int, cd_size: int) -
         # date(2) crc(4) comp(4) uncomp(4) name_len(2) extra_len(2) comment_len(2)
         # disk_start(2) int_attr(2) ext_attr(4) local_offset(4)。
         (_ver_made, _ver_need, _flags, _method, _mtime, _mdate,
-         _crc, comp_size, uncomp_size, name_len, extra_len, comment_len,
+         crc, comp_size, uncomp_size, name_len, extra_len, comment_len,
          _disk_start, _int_attr, _ext_attr, local_offset) = struct.unpack(
             "<6H3I5H2I", blob[pos + 4:pos + 46])
         name = blob[pos + 46:pos + 46 + name_len].decode("utf-8")
@@ -171,7 +175,8 @@ def parse_central_directory(reader: RangeReader, cd_offset: int, cd_size: int) -
                     local_offset = struct.unpack("<Q", payload[vpos:vpos + 8])[0]
                     vpos += 8
             epos += 4 + esz
-        entries[name] = (local_offset, comp_size)
+        entries[name] = ((local_offset, comp_size, crc, uncomp_size)
+                         if with_meta else (local_offset, comp_size))
         pos += 46 + name_len + extra_len + comment_len
     return entries
 

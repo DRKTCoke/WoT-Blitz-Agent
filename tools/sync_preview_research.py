@@ -56,6 +56,104 @@ def run_exporter(*args: str) -> None:
     subprocess.run(cmd, cwd=ROOT, check=True)
 
 
+def _names_tables(game_data: pathlib.Path, langs: list[str]) -> tuple[dict, dict]:
+    import yaml
+    names = {lang: E.Names(game_data, lang=lang) for lang in langs}
+    tables = {}
+    for lang in langs:
+        tables[lang] = yaml.safe_load(
+            E.decode_dvpl((game_data / f"Strings/{lang}.yaml.dvpl").read_bytes()).decode("utf-8")
+        ) or {}
+        for key, value in E.load_localization_overlay(lang).items():
+            tables[lang].setdefault(key, value)
+    return names, tables
+
+
+def _read_json(path: pathlib.Path):
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+def _write_json(path: pathlib.Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8")
+
+
+def sync_globals(out: pathlib.Path, game_data: pathlib.Path, langs: list[str]) -> dict:
+    """devices / camouflage / skills / strings 全量对比；内容相同则原样复用。"""
+    names, tables = _names_tables(game_data, langs)
+    version = E.decode_dvpl((game_data / "version.txt.dvpl").read_bytes()).decode("utf-8").strip()
+    changed: list[str] = []
+
+    devices = E.export_devices(game_data, names, tables)
+    dev_doc = _read_json(out / "devices.json") or {}
+    if dev_doc.get("devices") != devices["devices"] or dev_doc.get("presets") != devices["presets"]:
+        _write_json(out / "devices.json", {
+            "meta": {"gameVersion": version, "count": len(devices["devices"]),
+                     "presets": len(devices["presets"])}, **devices,
+        })
+        changed.append("devices.json")
+
+    camo = E.export_camouflage(game_data)
+    camo_doc = _read_json(out / "camouflage.json") or {}
+    if (camo_doc.get("defaultCategory") != camo["defaultCategory"]
+            or camo_doc.get("categories") != camo["categories"]):
+        _write_json(out / "camouflage.json", {"meta": {"gameVersion": version}, **camo})
+        changed.append("camouflage.json")
+
+    skills = None
+    skill_error = None
+    try:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            skills = E.export_skills(game_data, pathlib.Path(tmp), tables)
+    except Exception as exc:  # noqa: BLE001 - 缺图标资源时保留基座并在报告中显式标记
+        skill_error = f"{type(exc).__name__}: {exc}"
+    if skills is not None:
+        skill_doc = _read_json(out / "skills.json") or {}
+        # 预览 Data 根若没带完整 avatar/技能定义，导出结果会是空；不能用空表覆盖现役
+        # 20 项技能（fail-closed，保留基座并报告）。
+        if not skills["skills"] and skill_doc.get("items"):
+            skill_error = "preview skills empty; kept base"
+        elif skill_doc.get("items") != skills["skills"] or skill_doc.get("classes") != skills["classes"]:
+            _write_json(out / "skills.json", {
+                "meta": {"gameVersion": version, "count": len(skills["skills"])},
+                "classes": skills["classes"], "items": skills["skills"],
+            })
+            changed.append("skills.json")
+
+    # params 已由 sync_params 合并；用最终键集导出参数名文案。
+    fmt = (_read_json(out / "params/format.json") or {}).get("params") or {}
+    strings = E.export_strings(game_data, langs, sorted(fmt))
+    for lang in langs:
+        path = out / f"strings/{lang}/research.json"
+        doc = _read_json(path) or {"meta": {"gameVersion": version, "lang": lang}, "entries": {}}
+        entries = dict(doc.get("entries") or {})
+        merged = dict(entries)
+        merged.update(strings[lang])
+        if merged != entries:
+            _write_json(path, {"meta": {"gameVersion": version, "lang": lang}, "entries": merged})
+            changed.append(f"strings/{lang}/research.json")
+
+    meta_path = out / "meta.json"
+    if meta_path.exists():
+        meta = _read_json(meta_path)
+        files = meta.setdefault("files", {})
+        # 即使某个文件内容相同/被保留，也刷新其 hash，避免上一轮空 skills 等写坏 meta。
+        for name in ("devices.json", "camouflage.json", "skills.json"):
+            path = out / name
+            if path.is_file():
+                data = path.read_bytes()
+                files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+        for name in changed:
+            data = (out / name).read_bytes()
+            files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+        meta.setdefault("counts", {})["skills"] = len(
+            (_read_json(out / "skills.json") or {}).get("items") or {})
+        _write_json(meta_path, meta)
+    return {"changed": changed, "skillIconError": skill_error}
+
+
 def rule_matches(rule: dict, tank: dict) -> bool:
     if not rule:
         return False
@@ -276,8 +374,10 @@ def main() -> None:
                  "--modules-only", "--merge", "--out", str(out))
     run_exporter("--game-data", str(args.game_data), "--items-only", "--out", str(out))
     params_check = sync_params(out, pathlib.Path(args.game_data))
+    globals_check = sync_globals(out, pathlib.Path(args.game_data), ["en", "zh-Hans"])
     checks = validate(out)
     checks["params"] = params_check
+    checks["globals"] = globals_check
     checks["paramsDurability"] = json.loads(
         (out / "meta.json").read_text(encoding="utf-8")
     )["counts"].get("moduleDurabilityParams")

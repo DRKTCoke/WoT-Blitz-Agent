@@ -343,8 +343,18 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   `numeric.keyedArchive` 包装后读取 units/digits/biggerIsBetter；合并时只追加新键，
   保留现役 `crew`/`gunCommonReloadTime`，且不把 `modulesDumpSection` 放进
   `mainSections`——数据已随包发布，WotbTools 面板暂不展示。
-- **生产已上线 r5**：`releases/t11p2-20261106-r5`（`content_digest sha256:1ec79041…`；相对 r4 仅 `params/structure.json`、`params/format.json`、`research/meta.json` 3 文件，补 42 个模块耐久参数且不加入 `mainSections`、暂不展示；r4（`1dcf3221…`）、r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、
-  r2（`89b5cc64…`）、旧 `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
+- **strings/meta 预览同步（r6）**：r4/r5 的 `research/strings/{en,zh-Hans}/research.json`
+  仍沿用 11.21 基线（`meta.gameVersion=11.21.0.1235_7376187`）。预览 11.22 的 strings
+  variant 已去掉单位占位符的 `<text_units>%(units)</text_units>` 包裹（改为 `%(units)`），
+  并新增 `unit_measure_short_meter_per_second_squared="m/s²"`（46→47 条）；`sync_globals`
+  的 strings 平面按源清单更新两语文件与 `research/meta.json` 的 sha256/字节数、preview
+  时间戳，其余文件保持复用。该差异由全量同步链首次检出并随 r6 发布。
+- **生产已上线 r6**：`releases/t11p2-20261106-r6`（`content_digest sha256:ed940dfb…`；相对 r5 仅
+  `research/strings/{en,zh-Hans}/research.json` + `research/meta.json` 3 文件，strings 的
+  `meta.gameVersion` 从 11.21 基线切到预览 11.22、新增 `m/s²`、23 条参数名去掉
+  `<text_units>` 包裹；r5（`1ec79041…`，42 个模块耐久参数）、r4（`1dcf3221…`）、
+  r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、r2（`89b5cc64…`）、旧
+  `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
   通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线；`tank-burst-dpm-20261104`
@@ -481,6 +491,60 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   派生**：每次 pb 刷新后必须同批重导，否则打包器物化的 `data/shellKinds.json` 与包内 pb 脱版。
   打包器对它 fail-closed（缺源即拒绝打包），但**同版性只能靠刷新链顺序保证**——先 `update-data`
   再 `dump-shell-kinds`，同一回合完成
+
+### 5.1b 全量版本差异与 pack 复用（2026-11-06 起）
+
+数据版本更新不再只靠人工判断“改了什么”，而是先做**全量源清单对比**：
+
+1. `python tools/plan_data_version.py --base <上一个默认客户端 Data/ZIP> \
+   --new <新客户端 Data/ZIP> --base-version <v1> --new-version <v2> \
+   --out change_plan.json --base-pack-manifest <base>/manifest.json \
+   --new-pack-manifest <new>/manifest.json --strict`
+   - 目录按 sha256、ZIP 按 central-directory CRC32+size 做全量比较；
+   - 按路径语义分类到 `vehicle-roster` / `vehicle-components` / `vehicle-xml` /
+     `vehicle-params` / `vehicle-model` / `shared-xml` / `techtree` / `strings` /
+     `tank-icons` / `maps` / `map-registry` / `ui` / `unmapped`；
+   - plan v2 追加 `tanks`（bridge 解析的 tank_id/kinds/files）、`maps`
+     （`map_index.json` 解析的 space → keys/map_ids）、`wholeTable`、`pins`
+     （bridge/pb/map_index 的 sha256）；未解析 tank/map 在 `--strict` 下失败；
+   - 输出逐平面 added/changed/removed、车辆 stem、`unmappedChanged`，以及
+     `missingOutput` / `orphanOutput`（配合新旧 pack manifest）；
+   - `orphanOutput` 豁免发布元数据/索引与 pack 内派生件（`data/models.pb`、
+     `data/tank_names.json`、`data/shellKinds.json`、`data/gunMaskSlices.json`、
+     `data/data_version.json`），避免真实车型变更被派生输出误报为“无源”；
+   - `--strict` 对未识别变化、未解析 tank/map 或缺产物 fail-closed，不再静默跳过。
+2. `python tools/apply_data_version.py --base-pack <base> --out-pack <new> \
+   --game-data <new Data> --bridge ... --plan change_plan.json [--dry-run] [--only ...]`
+   - 先以硬链接克隆 base pack（`research/**` 复制，避免写穿共享 inode）；
+   - `research`：调用 `sync_preview_research.py` 做 modules/items/params/devices/
+     camouflage/skills/strings 全平面增量，内容相同保留原文件；
+   - `vehicle-assets`：按 plan.tanks 逐个调用原 `export_tank_glb.py --tank` /
+     `export_tank_suspension.py --tank` / `export_tank_tread.py --tank` /
+     `export_tank_icons.py --tank`；图标重新 `--emit-crops`，只覆盖哈希变化的文件，
+     被移除车同步删除；
+   - `core`（整表重建、只覆盖变化字节）：从 base pack 反向物化 `work/data/`（核心
+     pb/cache、game_data、cache/models 等），在 `work/` 下按原顺序运行
+     `wotb-agent update-data --force` → `dump-tank-data` → `dump-shell-kinds`；
+     `tanks.pb`/`models.pb`/`tank_cache` 整表重写，`game_data/{id}.json`、
+     `tank/{id}.json` 全量重算后逐文件 sha256 比较，只覆盖变化项。默认 `--offline`
+     复用 base pb；`--core-online` 允许更新 pb，roster/components 变化在 offline
+     下 fail-closed，需先准备新 pb；
+   - `maps`：按变化 space 重导 GLB/ground/光照/IBL（`export_map_glb.py --map` 等），
+     逐文件覆盖；`composite_overhead.py --map` 重合成；随后**整表**重跑
+     `materialize_destructible_variants.py` 与 `export_2d_basemaps.py`（用户选定），
+     重建 `index.json`/`map2d`/`cover` 索引；
+   - `unmapped`/未解析 tank/map/`maps.yaml` 注册表变化直接拒绝 apply；
+   - `--dry-run` 只打印各 handler 命令；`--only` 可单独排障；`--keep-work` 保留
+     `.work/` staging；`--gun-mask-slices` 在 pb 变化时提供同批 sidecar；
+     `--render-dir` 指定俯视渲染缓存；
+   - `--refresh-manifest` 后输出 `<out>.apply.json`（逐 handler reused/updated/deleted）。
+
+核心整表格式（`tanks.pb`/`models.pb`/`tank_cache`/`shellKinds`/`gunMaskSlices`）仍按原
+编码器整表重写，因为无法安全按车打补丁；但最终 pack 只覆盖哈希变化的字节，未变文件
+保持 base 硬链接。逐车 GLB/悬挂/履带/图标和地图 GLB/ground 只重导变化项；地图 2D/变体
+按选定口径整表重跑。`data_version.json` 追加 `base_game_version` / `new_game_version` /
+`source_plan_sha256` / `changed_planes` / `coverage` / `scope`（tanks/maps/wholeTable）/
+`inputs`（pins），便于回读审计。
 
 ### 5.2 资产 origin（Alibaba）增量发布流程
 
