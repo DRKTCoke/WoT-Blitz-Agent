@@ -146,7 +146,13 @@ def test_real_preview_artifact() -> None:
         print("skip real preview artifact (.t11p2/research_work missing)")
         return
     expected = {15153: 2850, 27905: 2200, 28161: 3100, 30241: 2900, 30497: 2200}
+    expected_abilities = {
+        15153: ["rechargeableNitro"], 27905: ["combatFrenzy"],
+        28161: ["rammingConfiguration"], 30241: ["burstMode"],
+        30497: ["steadyAimSystem"],
+    }
     found: dict[int, int] = {}
+    abilities: dict[int, list[str]] = {}
     for path in sorted(modules_dir.glob("*.json")):
         for tank in json.loads(path.read_text(encoding="utf-8")).get("tanks", {}).values():
             progression = tank.get("upgradeProgression")
@@ -156,9 +162,12 @@ def test_real_preview_artifact() -> None:
             hp = E.upgrade_top_hp(tank, progression)
             if hp is not None:
                 found[tank["tankId"]] = hp
+            if tank.get("vehicleAbilities"):
+                abilities[tank["tankId"]] = tank["vehicleAbilities"]
     top_hp = json.loads(sidecar.read_text(encoding="utf-8"))["tanks"]
     assert {int(k): v for k, v in top_hp.items()} == expected, top_hp
     assert found == expected, found
+    assert abilities == expected_abilities, abilities
 
 
 def _rule_matches(rule: dict, tank: dict) -> bool:

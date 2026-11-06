@@ -196,6 +196,7 @@ interface VehicleModules {
   tankId: number
   tier: number                     // 11 = XI；upgradeProgression 仅该档
   gameVersion?: string             // XI 必填，须等于 upgradeProgression.provenance.gameVersion
+  vehicleAbilities?: string[]      // 客户端 <extras> ∩ item <isVehicleAbility>（r7；机制展示绑定）
   upgradeProgression?: {           // 客户端 <upgradeProgression> → WotbTools 投影输入
     nodes: { id: number, techName: string,
              type: 'NODETYPE_COMMON'|'NODETYPE_MECHANIC'|'NODETYPE_ALTERNATIVE_MECHANIC',
