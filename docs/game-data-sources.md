@@ -514,7 +514,10 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
    - 先以硬链接克隆 base pack（`research/**` 复制，避免写穿共享 inode）；
    - 命中 research 相关平面时调用 `sync_preview_research.py` 做全平面增量
      （modules/items/params/devices/camouflage/skills/strings；内容相同则保留原文件）；
-   - 车辆模型/参数/地图等尚未自动化的平面显式列为 `manualPlanes` 并 fail-closed，
+   - **vehicle-xml 例外**：只自动同步 `research/modules` / `research/tech_tree`；
+     同一平面还产出 `tank/*.json`、`data/tank_cache.json`、`game_data/`、`data/tanks.pb`，
+     这些不在 apply 范围，因此默认 fail-closed；
+   - 车辆模型/参数/图标/地图等尚未自动化的平面显式列为 `manualPlanes` 并 fail-closed，
      避免“只更新了一部分就发布”；需要时走完整重建链或显式 `--allow-manual`；
    - plan 里出现 `unmapped` 变化时直接拒绝 apply（先补 plane 规则，不允许静默跳过）；
    - `--refresh-manifest` 后输出 `<out>.apply.json`（linked/copied、research 变更、待人工平面）。

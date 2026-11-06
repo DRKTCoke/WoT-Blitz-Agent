@@ -13,8 +13,10 @@
 2. 若 plan 命中 research 相关平面（vehicle-xml/shared-xml/techtree/strings），调用
    `sync_preview_research.py` 对 out/research 做全平面同步；
 3. `--refresh-manifest` 重算 manifest（需要 `--data-version-dir` 提供 data_version.json）；
-4. 覆盖门禁：plan 里出现 vehicle-params/vehicle-model/maps 等尚未自动 apply 的平面时
-   fail-closed，并打印需要运行的完整重建命令；只有显式 `--allow-manual` 才继续。
+4. 覆盖门禁：plan 里出现 vehicle-xml/vehicle-params/vehicle-model/tank-icons/maps 等
+   含非 research 输出的平面时 fail-closed，并打印需要运行的完整重建命令；只有显式
+   `--allow-manual` 才继续（vehicle-xml 只同步 research 投影，tank/cache/game_data
+   仍需完整重建）。
 5. 输出 `<out>.apply.json`，列出复用的 pack 文件数、research 变更、待人工平面。
 
 设计约束：不猜测/不统计；plan 未命中的平面一律按基座复用；写入前断链由 sync 工具负责。
@@ -33,7 +35,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
 RESEARCH_PLANES = {"vehicle-xml", "shared-xml", "techtree", "strings"}
-MANUAL_PLANES = {"vehicle-params", "vehicle-model", "tank-icons", "maps"}
+# vehicle-xml 的 research 投影可同步，但同一平面还产出 tank/、game_data/、
+# data/tanks.pb、data/tank_cache.json；这些不在 apply 范围，必须 fail-closed。
+MANUAL_PLANES = {"vehicle-xml", "vehicle-params", "vehicle-model", "tank-icons", "maps"}
 
 
 def clone_pack(base: pathlib.Path, out: pathlib.Path) -> tuple[int, int]:
