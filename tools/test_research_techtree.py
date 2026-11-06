@@ -16,9 +16,16 @@ client-research-tech-tree-loadout.md §3.2 / §4.2），以及 XI 预览合并
 import json
 import pathlib
 import collections
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TT = ROOT / "data/research/tech_tree"
+# 默认校验现役 data/research；预览合并树用第一个参数显式指定（如 .t11p2/research_work），
+# 避免把 supertest 增量误当成现役数据。
+RESEARCH_ROOT = (pathlib.Path(sys.argv[1]) if len(sys.argv) > 1
+                 else ROOT / "data/research")
+if not RESEARCH_ROOT.is_absolute():
+    RESEARCH_ROOT = ROOT / RESEARCH_ROOT
+TT = RESEARCH_ROOT / "tech_tree"
 NATIONS = ["ussr", "germany", "usa", "china", "france", "uk", "japan", "other", "european"]
 # census 的整车边行（vehicle）；逐来源模块 kind 的拆分是导出的派生事实，
 # 只校验自洽（各 kind 之和 = 总数），不用未记录的数字硬编码。
@@ -61,7 +68,7 @@ def test_tech_tree_export():
 
         # 模块联表完整性：每个定义节点的 tankId 都能在 modules/{nation}.json 对号
         # （modules 的键是 stem、值里只有 tankId；节点 stem 即键）
-        modules = json.loads((ROOT / f"data/research/modules/{nation}.json").read_text(encoding="utf-8"))
+        modules = json.loads((RESEARCH_ROOT / f"modules/{nation}.json").read_text(encoding="utf-8"))
         module_tanks = modules["tanks"]
         for node in nodes:
             for key in ("stem", "tankId", "listId", "tier", "x", "y", "price", "priceRaw", "tags"):
@@ -125,7 +132,7 @@ def test_tech_tree_export():
         problems.append(f"pending stems {sorted(pending_all)} != 预览登记位")
     # 树外预览车（收藏 tier 11）：必须在 modules 里，且不得出现在任何树上
     for stem, (nation, tank_id) in PREVIEW_OFF_TREE.items():
-        modules = json.loads((ROOT / f"data/research/modules/{nation}.json").read_text(encoding="utf-8"))
+        modules = json.loads((RESEARCH_ROOT / f"modules/{nation}.json").read_text(encoding="utf-8"))
         if stem not in modules.get("tanks", {}):
             problems.append(f"{nation}: 树外预览车 {stem} 缺 modules 条目")
         data = json.loads((TT / f"{nation}.json").read_text(encoding="utf-8"))

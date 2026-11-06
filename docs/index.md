@@ -417,6 +417,9 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
 
 ### 数据面
 
+- **超测 r4：XI 装甲摘要/升级树/顶级 HP/消耗品补给（2026-11-06）**：已上线 `t11p2-20261106-r4`（同日中间版 `r4-xi-items` 仅 items/modules，最终 r4 相对其 6 文件 = `tank_cache` + 5 预览 `tank/*.json`；两者均保留回滚）（**6000 件 / 4460.9 MB / 743 辆**，digest `sha256:1dcf3221…`），修复 5 辆 XI 的 **tank 顶层 `armor` 摘要**（此前 `update-data` 在提取 `game_data` 之前重建 cache，空目录使 `extract_armor_summary` 回退“取最大板厚”：XM69 车体 230/230/230 → 客户端 `primaryArmor` **135/80/40**，炮塔 210/210/210 → **210/90/55**；BZ-79/432U/KR-1/Black Rock 同步修正），并把 `data/tank_cache.json` 的 739/743 条错误摘要全部按 `game_data` primary 重算。**新增数据面**：5 辆 XI 的 `research/modules/{nation}.json` 写入客户端 `upgradeProgression`（节点/备选组/属性定义/provenance，与 WotbTools fixture 逐项一致）；`data/upgrade_top_hp.json` → `tank_cache.hp_top` / `tank/{id}.json.hp_top`（XM69 2200、BZ-79 2850、KR-1 3100、Black Rock 2900、432U 2200）；`research/consumables.json` / `provisions.json` 从预览客户端重导，**过滤器 tier 上限 10→11**（65/89 件，common 14/38），新增 `isVehicleAbility` 条目按战斗能力排除出装配池。**根因修复**：`update-data` 改为先 `extract_all` 再重建 `tank_cache`，空 `game_data` 直接报错；预览构建预置 738+5 份 `game_data` 后再 dump。**WotbTools**：XI 卡片血量读 `hp_top`，详情/装甲查看器缺省 `upgrade=top`（显式 `upgrade=stock` 可回退），同 PR bump `wotbVersion=4.5.1`。**验证**：`asset_release verify --pack --full` PASS；Rust workspace 测试全过；WotbTools 前端 6188 项通过（另 `agent-wasm-dist.contract` 在 Windows CRLF 下需 LF 本地化，LF 下 9/9 通过，与本次改动无关）。**波及面**：仅 `supertest` dataset；默认 `11.21.0` 与 `data/research`（738 辆，consumables 64/provisions 85）不变；r3 保留回滚。
+
+- **11.21 + 超测数据面重建（2026-11-06，r2 → r3）**：按最新口径重做两个 dataset 并发布——`11.21.0-20261106-r2`（**5965 件 / 4433.0 MB / 738 辆**，digest `sha256:9198d0ca…`）与 `t11p2-20261106-r3`（**6000 件 / 4460.9 MB / 743 辆**，digest `sha256:3c0a4b62…`；r2 为同日中间版，保留回滚）。**11.21 变化**：补齐 7 个变体的 2D 底图/封面（43/43），相对上一 release 仅 14 个新增派生文件 + 3 个索引（delta 17 件，5.8 MB）；`map/` 几何与 `ground.webp` 零变化。**超测变化**：改为在 r2 基线 + 5 辆 XI 上全量重建，743 辆 tank JSON 统一带 burst 字段（相对旧超测 release 708 个 tank JSON + 9 个数据/索引文件变更，delta 717 件，10.1 MB）；research 743 辆 / 308 节点 / 4 pending / 314 边，shellKinds 2099；地图/2D/封面零变化。**r3 修正**：补 `data/cache/models` 后重跑 `dump-tank-data`，5 辆预览车的 `model_gun/turret_count` 0→1/1（Black Rock 2/1），仅 5 份 tank JSON 变化（38 KB）。**重建链（关键次序）**：pack → composite（36 图，固定 `YX`）→ materialize variants（7 个）→ `export_2d_basemaps.py`（此时 index 才是 43 key）→ `--refresh-manifest` → stamp；超测 research 从**纯 11.21 副本**出发，先把预览树 8 个 XI 登记位补成 pending，再跑 `update_t11_techtree.py` + modules merge，避免污染 `data/research`。**验证**：两包本地 `verify --pack --full` PASS；主机 `asset_release verify --pack --full` PASS；`dataset.sh link` 后 `versions.json` default 仍 11.21.0；公网 r2 变更集 734 文件 / 15.97 MB、r3 变更集 5 文件均逐文件回读 sha256 **0 mismatch**；CORS/ETag/Cache-Control 契约手工核验通过（`verify.sh` 的 dataset 段在 Windows Git Bash 下受 `python3` CRLF 输出影响，生产 Linux 无此问题）。对象库 6891 对象 / 4272.0 MB，16 个 release 逻辑 70614.4 MB（去重 94.0%）。**本地事故与修复**：超测构建直接 `write_text` `data/data_version.json`（`cp -al` 硬链接）曾把本地 11.21 包该文件写成超测内容（416 B vs 188 B）；已断链恢复并 `verify --pack --full` PASS，线上 11.21 release 不受影响（发布在其前，主机为不可变对象物化）。**波及面**：两个 dataset 的版本选择器/公网路径；`11.21.0-20261106` 与 `t11p2-20261106` 保留回滚。契约见 [game-data-sources.md](game-data-sources.md) §5.2、[data-inventory.md](data-inventory.md) 包统计。
 - **11.21 现役包全量重建（2026-11-06，数据面修复）**：生产 `11.21.0` 从
   `initial-20261019`（无 `research/`）重建为 **`11.21.0-20261106`**（**5951 件 /
   4427.2 MB / 738 辆**，digest `sha256:11e7bfa8…`）。**触发**：默认通道切回正式服后
@@ -469,7 +472,7 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
   game_data 逐字节无回归）。来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7。
   **公网路径**：`/versions.json` 与
   `/v/<id>/...` 需 WotbTools 的 Caddyfile（`/v/*` + `/versions.json`）redeploy 后生效——
-  当前生产 Caddy 仍是旧配置（两路径 404）；新 Caddyfile 已用临时容器对真实
+  2026-11-06 已随 Caddyfile redeploy 上线（`/versions.json` 与 `/v/<id>/...` 回读 200）；新 Caddyfile 已用临时容器对真实
   `/srv/wotb-assets` 验证（`/index.json`、`/version.json`、`/versions.json`、dataset
   路径全 200），未改动生产 Caddy。前端选择器与 Caddy 同批部署。
   契约见 [game-data-sources.md](game-data-sources.md) §5.2 与
@@ -492,7 +495,7 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
   （default）+ `11.21.0`；t11p2 上线时改为 `supertest` + `11.21.0`；**2026-11-06 默认回到正式服**：`11.21.0`（default，release `11.21.0-20261106`）+ `supertest`（超测服，显式选择），
   旧通道 `unlink` 下线，`current` 根路径行为对旧客户端保持连续。**公网路径**：`/versions.json` 与
   `/v/<id>/...` 需 WotbTools 的 Caddyfile（`/v/*` + `/versions.json`）redeploy 后生效——
-  当前生产 Caddy 仍是旧配置（两路径 404）；新 Caddyfile 已用临时容器对真实
+  2026-11-06 已随 Caddyfile redeploy 上线（`/versions.json` 与 `/v/<id>/...` 回读 200）；新 Caddyfile 已用临时容器对真实
   `/srv/wotb-assets` 验证（`/index.json`、`/version.json`、`/versions.json`、dataset
   路径全 200），未改动生产 Caddy。前端选择器与 Caddy 同批部署。
   契约见 [game-data-sources.md](game-data-sources.md) §5.2 与

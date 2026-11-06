@@ -1324,6 +1324,7 @@ mod tests {
                     armor: None,
                     shells: Vec::new(),
                     hp: None,
+                    hp_top: None,
                     speed_forward: None,
                     speed_reverse: None,
                     hull_traverse: None,
