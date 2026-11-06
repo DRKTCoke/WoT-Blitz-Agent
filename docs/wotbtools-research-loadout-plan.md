@@ -122,7 +122,8 @@ data/research/
   params/format.json           # 每参数 {units, digits, biggerIsBetter}；supertest r5 70→112 键
                                #  （新增 42 个模块耐久参数，暂不展示）
   strings/{lang}/research.json # en + zh-Hans：设备/消耗品/补给名与描述、参数名
-                               #   tank_descr_param_*、分组标题
+                               #   tank_descr_param_*、分组标题；supertest r6 起
+                               #   单位占位符不再包 <text_units>（仅 %(units)）
   icons/                       # 模块图标 5 张（Gfx/UI/ModulesTechTree/vehicle*.packed.webp）
                                #   + icon_manifest.json（客户端 icon 名 → WotbTools 图标键映射）
   # 以下本期不消费，导出器留可选开关（--with-research-graph），供日后科技树展示：

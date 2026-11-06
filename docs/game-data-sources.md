@@ -343,8 +343,18 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   `numeric.keyedArchive` 包装后读取 units/digits/biggerIsBetter；合并时只追加新键，
   保留现役 `crew`/`gunCommonReloadTime`，且不把 `modulesDumpSection` 放进
   `mainSections`——数据已随包发布，WotbTools 面板暂不展示。
-- **生产已上线 r5**：`releases/t11p2-20261106-r5`（`content_digest sha256:1ec79041…`；相对 r4 仅 `params/structure.json`、`params/format.json`、`research/meta.json` 3 文件，补 42 个模块耐久参数且不加入 `mainSections`、暂不展示；r4（`1dcf3221…`）、r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、
-  r2（`89b5cc64…`）、旧 `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
+- **strings/meta 预览同步（r6）**：r4/r5 的 `research/strings/{en,zh-Hans}/research.json`
+  仍沿用 11.21 基线（`meta.gameVersion=11.21.0.1235_7376187`）。预览 11.22 的 strings
+  variant 已去掉单位占位符的 `<text_units>%(units)</text_units>` 包裹（改为 `%(units)`），
+  并新增 `unit_measure_short_meter_per_second_squared="m/s²"`（46→47 条）；`sync_globals`
+  的 strings 平面按源清单更新两语文件与 `research/meta.json` 的 sha256/字节数、preview
+  时间戳，其余文件保持复用。该差异由全量同步链首次检出并随 r6 发布。
+- **生产已上线 r6**：`releases/t11p2-20261106-r6`（`content_digest sha256:ed940dfb…`；相对 r5 仅
+  `research/strings/{en,zh-Hans}/research.json` + `research/meta.json` 3 文件，strings 的
+  `meta.gameVersion` 从 11.21 基线切到预览 11.22、新增 `m/s²`、23 条参数名去掉
+  `<text_units>` 包裹；r5（`1ec79041…`，42 个模块耐久参数）、r4（`1dcf3221…`）、
+  r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、r2（`89b5cc64…`）、旧
+  `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
   通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线；`tank-burst-dpm-20261104`
