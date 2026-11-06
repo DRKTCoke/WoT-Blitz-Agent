@@ -482,6 +482,34 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   打包器对它 fail-closed（缺源即拒绝打包），但**同版性只能靠刷新链顺序保证**——先 `update-data`
   再 `dump-shell-kinds`，同一回合完成
 
+### 5.1b 全量版本差异与 pack 复用（2026-11-06 起）
+
+数据版本更新不再只靠人工判断“改了什么”，而是先做**全量源清单对比**：
+
+1. `python tools/plan_data_version.py --base <上一个默认客户端 Data/ZIP> \
+   --new <新客户端 Data/ZIP> --base-version <v1> --new-version <v2> \
+   --out change_plan.json --base-pack-manifest <base>/manifest.json \
+   --new-pack-manifest <new>/manifest.json --strict`
+   - 目录按 sha256、ZIP 按 central-directory CRC32+size 做全量比较；
+   - 按路径语义分类到 `vehicle-xml` / `vehicle-params` / `vehicle-model` /
+     `shared-xml` / `techtree` / `strings` / `tank-icons` / `maps` / `ui` / `unmapped`；
+   - 输出逐平面 added/changed/removed、车辆 stem、`unmappedChanged`，以及
+     `missingOutput` / `orphanOutput`（配合新旧 pack manifest）；
+   - `--strict` 对未识别变化或缺产物 fail-closed，不再静默跳过。
+2. `python tools/apply_data_version.py --base-pack <base> --out-pack <new> \
+   --game-data <new Data> --bridge ... --plan change_plan.json`
+   - 先以硬链接克隆 base pack（`research/**` 复制，避免写穿共享 inode）；
+   - 命中 research 相关平面时调用 `sync_preview_research.py` 做全平面增量
+     （modules/items/params/devices/camouflage/skills/strings；内容相同则保留原文件）；
+   - 车辆模型/参数/地图等尚未自动化的平面显式列为 `manualPlanes` 并 fail-closed，
+     避免“只更新了一部分就发布”；需要时走完整重建链或显式 `--allow-manual`；
+   - `--refresh-manifest` 后输出 `<out>.apply.json`（linked/copied、research 变更、待人工平面）。
+
+当前自动 apply 覆盖 **research 面**；车辆 GLB/图标/悬挂/履带、地图链仍沿用完整重建
+工具（`export_tank_glb.py` / `export_map_glb.py` 等），由 planner 的变化清单给出精确范围。
+`data_version.json` 在 apply 时追加 `base_game_version` / `new_game_version` /
+`source_plan_sha256` / `changed_planes` / `coverage`，便于回读审计。
+
 ### 5.2 资产 origin（Alibaba）增量发布流程
 
 **当前生产 origin = `https://assets.wotbtools.com`**（Alibaba 主机 `ali-sh-asset-01` /
