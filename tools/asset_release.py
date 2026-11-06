@@ -402,6 +402,13 @@ def command_catalog(args: argparse.Namespace) -> int:
 
 
 def command_verify(args: argparse.Namespace) -> int:
+    if getattr(args, "pack", None):
+        # 单 release 内容校验（dataset.sh link 切换在线 symlink 之前的候选体检）。
+        v = verify_dataset(Path(args.pack).resolve(), full=args.full)
+        print(f"verify: PASS（{v['dataset_id']} / {v['release']}，tanks={v['tank_count']}，full={args.full}）")
+        return 0
+    if not args.root:
+        raise ReleaseError("verify 需要 --pack <release 目录> 或 --root <datasets 目录>")
     root = Path(args.root).resolve()
     datasets = collect_datasets(root, full=args.full)
     if args.catalog:
@@ -495,7 +502,9 @@ def build_parser() -> argparse.ArgumentParser:
     catalog.set_defaults(func=command_catalog)
 
     verify = sub.add_parser("verify", help="校验 dataset 元数据与内容")
-    verify.add_argument("--root", required=True)
+    verify.add_argument("--root", default=None)
+    verify.add_argument("--pack", default=None,
+                        help="校验单个 release 目录（version.json + manifest 全量体检）")
     verify.add_argument("--catalog", default=None)
     verify.add_argument("--full", action="store_true", help="逐文件校验 sha256（慢）")
     verify.set_defaults(func=command_verify)
