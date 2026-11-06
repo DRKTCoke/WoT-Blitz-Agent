@@ -505,6 +505,9 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
      `shared-xml` / `techtree` / `strings` / `tank-icons` / `maps` / `ui` / `unmapped`；
    - 输出逐平面 added/changed/removed、车辆 stem、`unmappedChanged`，以及
      `missingOutput` / `orphanOutput`（配合新旧 pack manifest）；
+   - `orphanOutput` 豁免发布元数据/索引与 pack 内派生件（`data/models.pb`、
+     `data/tank_names.json`、`data/shellKinds.json`、`data/gunMaskSlices.json`、
+     `data/data_version.json`），避免真实车型变更被派生输出误报为“无源”；
    - `--strict` 对未识别变化或缺产物 fail-closed，不再静默跳过。
 2. `python tools/apply_data_version.py --base-pack <base> --out-pack <new> \
    --game-data <new Data> --bridge ... --plan change_plan.json`
@@ -513,6 +516,7 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
      （modules/items/params/devices/camouflage/skills/strings；内容相同则保留原文件）；
    - 车辆模型/参数/地图等尚未自动化的平面显式列为 `manualPlanes` 并 fail-closed，
      避免“只更新了一部分就发布”；需要时走完整重建链或显式 `--allow-manual`；
+   - plan 里出现 `unmapped` 变化时直接拒绝 apply（先补 plane 规则，不允许静默跳过）；
    - `--refresh-manifest` 后输出 `<out>.apply.json`（linked/copied、research 变更、待人工平面）。
 
 当前自动 apply 覆盖 **research 面**；车辆 GLB/图标/悬挂/履带、地图链仍沿用完整重建

@@ -44,8 +44,8 @@ def clone_pack(base: pathlib.Path, out: pathlib.Path) -> tuple[int, int]:
         if not src.is_file():
             continue
         rel = src.relative_to(base)
-        if rel.name in {"manifest.json", "version.json", "delta.json"}:
-            continue  # 发布元数据由新 release 重新 stamp，不复用旧硬链接
+        if len(rel.parts) == 1 and rel.name in {"manifest.json", "version.json", "delta.json"}:
+            continue  # 仅根目录发布元数据由新 release 重新 stamp；嵌套同名文件是包内容
         dst = out / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         if rel.parts and rel.parts[0] == "research":
@@ -83,6 +83,12 @@ def main() -> None:
     plan = json.loads(pathlib.Path(args.plan).read_text(encoding="utf-8"))
     active = {name for name, data in plan["planes"].items()
               if data.get("added") or data.get("changed") or data.get("removed")}
+    if "unmapped" in active:
+        unknown = plan.get("unmappedChanged") or []
+        print("plan 含未识别数据面变化，拒绝自动 apply：", file=sys.stderr)
+        for rel in unknown[:10]:
+            print(f"  {rel}", file=sys.stderr)
+        raise SystemExit(2)
     manual = sorted(active & MANUAL_PLANES)
     if manual and not args.allow_manual:
         print("需要人工/完整重建的数据面:", manual, file=sys.stderr)
