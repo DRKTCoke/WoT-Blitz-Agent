@@ -417,6 +417,24 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
 
 ### 数据面
 
+- **11.21 现役包全量重建（2026-11-06，数据面修复）**：生产 `11.21.0` 从
+  `initial-20261019`（无 `research/`）重建为 **`11.21.0-20261106`**（**5951 件 /
+  4427.2 MB / 738 辆**，digest `sha256:11e7bfa8…`）。**触发**：默认通道切回正式服后
+  科技树 `/research/tech_tree/{nation}.json` 404——旧 release 早于 research 数据面。
+  **重建链**：`dump-shell-kinds`（与 `tanks.pb` 同版）→ `export_tank_icons.py --all`
+  + `--emit-crops`（738/738）→ `export_research_loadout.py --out data/research
+  --with-research-graph`（纯 11.21：738 辆 / 304 节点 / 0 pending / 310 边，无预览
+  节点）→ `export_asset_pack.py --map-index map_index.json` →
+  `composite_overhead.py`（36 图，固定 `YX`）→ `export_2d_basemaps.py`（36 图 +
+  cover）→ `materialize_destructible_variants.py`（7 个变体目录）→
+  `--refresh-manifest` → `stamp`。相对 `initial-20261019` **935 件变更**（185 新增 /
+  750 修改 / 0 删除）：`research/**` 29 件（含 9 国 `tech_tree`）、738 辆
+  `tank/*.json`（连发组字段）、`data/tanks.pb`、`data/gunMaskSlices.json`、9 图
+  `destructibles.json`（变体元数据）、`map2d` 36 图与 7 个变体目录。
+  **验证**：本地 `verify --pack --full` PASS；主机同命令 PASS；`dataset.sh link`
+  PASS（catalog default 仍 11.21.0）；公网回读 `/version.json` = 新 release、
+  `/research/tech_tree/ussr.json` 200（41 节点 / 43 边 / 0 preview）、
+  `/manifest.json` 5951 件。旧 `initial-20261019` 保留回滚。
 - **内容寻址对象库（2026-11-05，存储去重，additive）**：`/srv/wotb-assets/objects/<sha[:2]>/<sha256>`
   保存唯一内容，`releases/<id>` 树改为对象硬链接；Caddy 仍按静态文件伺服，URL/ETag 语义不变。
   新增 `tools/asset_store.py`（`import` / `materialize` / `adopt` / `gc` / `stats` / `verify`）
@@ -432,7 +450,7 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
   详见 [asset-store.md](asset-store.md)。
 - **超测服 t11p2 预览包（2026-11-05/06，数据面更新）**：新预览源
   `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）整理上线，dataset 通道
-  重组为 **`supertest`（超测服，default）+ `11.21.0`（现役）**——超测服整体复用同一
+  重组为 `supertest`（超测服，当时 default）+ `11.21.0`（现役）——超测服整体复用同一
   通道随预览轮次重指（t11b → t11p2 → …），`11.22` 通道待正式服包发布时加入（终态
   三通道：超测服 / 11.21 / 11.22）；旧通道 `11.21.0-t11-preview` 已 `unlink` 下线。
   生产 release **`t11p2-20261106`**（**6000 件 / 4460.8 MB / 743 辆 = 738 + 5 XI**，
@@ -471,7 +489,7 @@ https://assets.wotbtools.com` PASS。前端已上线无需再动——百科 DPM
   与 CI fixture，`wotbVersion` 4.2.3→4.2.4。**证据**：真实 11.21 包（5965 件/738 辆）
   `stamp --dry-run` 通过；Python 12 用例、WotbTools `vue-tsc` 与定向 Vitest 用例通过。
   **生产登记（2026-11-05，2026-11-06 通道重组）**：最初登记 `11.21.0-t11-preview`
-  （default）+ `11.21.0`；t11p2 上线时改为 **`supertest`（超测服，default）+ `11.21.0`**，
+  （default）+ `11.21.0`；t11p2 上线时改为 `supertest` + `11.21.0`；**2026-11-06 默认回到正式服**：`11.21.0`（default，release `11.21.0-20261106`）+ `supertest`（超测服，显式选择），
   旧通道 `unlink` 下线，`current` 根路径行为对旧客户端保持连续。**公网路径**：`/versions.json` 与
   `/v/<id>/...` 需 WotbTools 的 Caddyfile（`/v/*` + `/versions.json`）redeploy 后生效——
   当前生产 Caddy 仍是旧配置（两路径 404）；新 Caddyfile 已用临时容器对真实

@@ -314,7 +314,7 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   （配置器弹种数据走 `tank_cache` / `tank/{id}.json`）。
 - **生产**：`releases/t11p2-20261106`（`content_digest sha256:ea489ff1…`；
   首发短暂的 `t11p2-20261105` 因上述穿深缺陷被替换，两代均保留可回滚），dataset
-  通道为 **`supertest`（超测服，default）+ `11.21.0`（现役）**；`11.22` 通道待 11.22
+  通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线；`tank-burst-dpm-20261104`
   release 保留作超测通道回滚。弹种表 2090 → **2099**（+9 个新弹种 ID）。
@@ -333,7 +333,8 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   覆盖”，不重传全包。线上 `initial-20261019` 与本地基线仅差这 8 个 `tank/{id}.json`
   （6.3→6.35、15.9→15.87），并入后 manifest 逐文件自洽（预检 0 mismatch）。
 - **已上线 `assets.wotbtools.com`（历史）**：该 release 曾作为 `current`；当前
-  `current -> datasets/supertest`（release `t11p2-20261106`，6000 件 / 4460.8 MB）。
+  `current -> datasets/11.21.0`（release `11.21.0-20261106`，5951 件 / 4427.2 MB，
+  738 辆）；超测通道 `supertest` 为显式选择（release `t11p2-20261106`，743 辆）。
   `t11-preview-20261029-techtree` 由
   `t11-preview-20261027-research-t11` 硬链接复制 + **9 件 `research/tech_tree/*.json`**
   组成（9 国科技树坐标 + 整车研发边，含 11.22 XI 预览节点）；manifest **5920 件 /
@@ -524,11 +525,12 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   `default --dataset <id>`、`rollback --dataset <id> --release <release-id>`。
 - 对外路径：`/v/<dataset-id>/...` 与 `/versions.json`；根路径仍是 `current`，
   旧客户端零改动。前端通过 `?data=<id>` 与显式下拉切换（WotbTools 实现）。
-- **生产登记（2026-11-05/06）**：dataset 通道重组为 **`supertest`（超测服，default，
-  release `t11p2-20261106`，743 辆）+ `11.21.0`（现役，release `initial-20261019`，
-  738 辆）**；`11.22` 通道待 11.22 正式服包发布时加入（三通道终态：超测服 / 11.21 /
-  11.22）。旧通道 `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线（release 保留回滚）；
-  `current` 指向 supertest，旧客户端根路径从 t11b 预览包平滑换到 t11p2。
+- **生产登记（2026-11-05/06）**：dataset 通道为 **`11.21.0`（现役，default，
+  release `11.21.0-20261106`，738 辆，全量重建含 `research/tech_tree/**`）+
+  `supertest`（超测服，release `t11p2-20261106`，743 辆，仅显式选择）**；`11.22`
+  通道待 11.22 正式服包发布时加入（三通道终态：11.21 / 超测服 / 11.22）。旧通道
+  `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线（release 保留回滚）；`current`
+  指向 11.21.0，`supertest` 不再占默认入口。
   `asset_release.py delta` 对通道改名需显式 `--allow-dataset-change`（delta.json 记
   `dataset_changed_from`）。`/versions.json` 与 `/v/<id>/...` 需 WotbTools 的 Caddyfile
   redeploy 后生效（当前生产仍 404）；新 Caddyfile 已在临时容器对真实 `/srv/wotb-assets`
@@ -550,9 +552,10 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
 （否则硬链接会被展开）。完整布局、发布 recipe、迁移与 GC 见
 [asset-store.md](asset-store.md)。
 
-**当前 release（2026-11-06）**：`t11p2-20261106`，**743 辆**（11.21 的 738 + 5 辆 XI），
-**6000 件 / 4460.8 MB**，`content_digest sha256:ea489ff1…`；`version.json` 登记
-dataset `supertest`（超测服，default），`current` 指向它。首发
+**当前 release（2026-11-06）**：`11.21.0-20261106`，**738 辆**（11.21 现役全量重建，
+含 `research/tech_tree/**`），**5951 件 / 4427.2 MB**，`content_digest sha256:11e7bfa8…`；
+`version.json` 登记 dataset `11.21.0`，`current` 指向它。超测通道 `supertest` 仍为
+`t11p2-20261106`（743 辆 / 6000 件 / 4460.8 MB），仅显式选择；首发
 `t11p2-20261105` 因穿深缺陷（弹道迁移未适配，见 §2.7）被同日替换，两代均保留。
 
 **再上一代 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`
