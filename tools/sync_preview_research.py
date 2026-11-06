@@ -36,6 +36,13 @@ import export_research_loadout as E  # noqa: E402
 
 PREVIEW_TANKS = (15153, 27905, 28161, 30241, 30497)
 EXPECTED_TT = {"nations": 9, "nodes": 308, "pending": 4, "edges": 314}
+EXPECTED_ABILITIES = {
+    15153: ["rechargeableNitro"],
+    27905: ["combatFrenzy"],
+    28161: ["rammingConfiguration"],
+    30241: ["burstMode"],
+    30497: ["steadyAimSystem"],
+}
 
 
 def sha(path: pathlib.Path) -> str:
@@ -289,6 +296,9 @@ def validate(out: pathlib.Path) -> dict:
             expected_hp[tid] = hp
         if sidecar.get(tid) != hp:
             problems.append(f"{tid} upgrade_top_hp {sidecar.get(tid)} != {hp}")
+        if tank.get("vehicleAbilities") != EXPECTED_ABILITIES[tid]:
+            problems.append(f"{tid} vehicleAbilities {tank.get('vehicleAbilities')} "
+                            f"!= {EXPECTED_ABILITIES[tid]}")
 
     catalogs = {}
     for kind in ("consumables", "provisions"):

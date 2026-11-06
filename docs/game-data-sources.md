@@ -349,10 +349,14 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   并新增 `unit_measure_short_meter_per_second_squared="m/s²"`（46→47 条）；`sync_globals`
   的 strings 平面按源清单更新两语文件与 `research/meta.json` 的 sha256/字节数、preview
   时间戳，其余文件保持复用。该差异由全量同步链首次检出并随 r6 发布。
-- **生产已上线 r6**：`releases/t11p2-20261106-r6`（`content_digest sha256:ed940dfb…`；相对 r5 仅
-  `research/strings/{en,zh-Hans}/research.json` + `research/meta.json` 3 文件，strings 的
-  `meta.gameVersion` 从 11.21 基线切到预览 11.22、新增 `m/s²`、23 条参数名去掉
-  `<text_units>` 包裹；r5（`1ec79041…`，42 个模块耐久参数）、r4（`1dcf3221…`）、
+- **XI vehicleAbilities（r7）**：车辆 XML 的 `<extras>` 同时承载普通外部配置与 XI 技能；
+  导出器只保留客户端 item 目录中带 `<isVehicleAbility>` 的标签，写入 modules 的
+  `vehicleAbilities`（5 辆：BZ-79 `rechargeableNitro`、432U `combatFrenzy`、KR-1
+  `rammingConfiguration`、Black Rock `burstMode`、XM69 `steadyAimSystem`），并补
+  `gameVersion`；`sync_preview_research.py` 对这 5 个绑定 fail-closed 校验。
+- **生产已上线 r7**：`releases/t11p2-20261106-r7`（`content_digest sha256:f5a891f5…`；相对 r6 仅
+  `research/modules/{china,usa,ussr}.json` + `research/meta.json` 4 文件，新增上述
+  `vehicleAbilities`；r6（`ed940dfb…`，strings/meta）、r5（`1ec79041…`，42 个模块耐久参数）、r4（`1dcf3221…`）、
   r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、r2（`89b5cc64…`）、旧
   `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
   通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22

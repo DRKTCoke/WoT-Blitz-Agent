@@ -640,7 +640,8 @@ def load_component(comp_dir: pathlib.Path, kind: str) -> tuple[dict[str, int], d
     return ids, shared
 
 
-def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, dict]) -> list[dict]:
+def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, dict],
+                 *, include_vehicle_ability: bool = False) -> list[dict]:
     list_path = game_data / f"XML/item_defs/vehicles/common/{kind}/list.xml.dvpl"
     root = load_dvpl_xml(list_path)
     items = []
@@ -670,6 +671,8 @@ def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, d
                 "isAbility": el.find("isAbility") is not None
                 or el.find("isVehicleAbility") is not None,
             }
+            if include_vehicle_ability:
+                item["isVehicleAbility"] = el.find("isVehicleAbility") is not None
             for lang, table in tables_by_lang.items():
                 item[f"name_{lang}"] = flat_lookup(table, user)
                 item[f"description_{lang}"] = flat_lookup(table, descr)
@@ -678,6 +681,18 @@ def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, d
             items.append(item)
     items.sort(key=lambda x: (x["mode"] != "common", x["id"]))
     return items
+
+
+def vehicle_ability_stems(game_data: pathlib.Path,
+                          tables_by_lang: dict[str, dict]) -> set[str]:
+    """客户端 item 目录中带 `<isVehicleAbility>` 的 stem；逐车 `<extras>` 只保留这些。"""
+    return {
+        item["stem"]
+        for kind in ("consumables", "provisions")
+        for item in export_items(game_data, kind, tables_by_lang,
+                                 include_vehicle_ability=True)
+        if item.get("isVehicleAbility")
+    }
 
 
 def write_item_catalogs(game_data: pathlib.Path, out_root: pathlib.Path, version: str,
@@ -1388,6 +1403,10 @@ def main() -> None:
         write_item_catalogs(game_data, out_root, version, tables_by_lang, generated_at)
         return
 
+    # 逐车 `<extras>` 只保留客户端 item 目录声明为 isVehicleAbility 的标签，
+    # 避免把 alteredSpotDuration / burstMode 之外的普通 extras 误报成技能。
+    ability_stems = vehicle_ability_stems(game_data, tables_by_lang)
+
     # ---------- 逐车模块 ----------
     # 模型碰撞盒 / 炮塔挂点：复用提取链的 Extractor（与 models.pb 同源同语义）。
     ex = Extractor(game_data)
@@ -1470,6 +1489,15 @@ def main() -> None:
                 "fuelTanks": export_module_kind(root, "fuelTanks", comp, names_by_lang, tables_by_lang, nation,
                                                 ids_map=fuel_ids, shared_map=fuel_shared),
             }
+            # XI 车辆能力：客户端 `<extras>` 子标签中由 item 目录声明为
+            # isVehicleAbility 的项；WotbTools 机制展示依赖这个绑定。
+            extras = root.find("extras")
+            if extras is not None:
+                abilities = [child.tag for child in extras
+                             if isinstance(child.tag, str) and child.tag in ability_stems]
+                if abilities:
+                    tank["vehicleAbilities"] = abilities
+                    tank.setdefault("gameVersion", version)
             if tank["radios"] is not None:
                 for m in tank["radios"]:
                     sh = radio_shared.get(m["stem"])
