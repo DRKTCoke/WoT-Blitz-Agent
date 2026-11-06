@@ -195,7 +195,10 @@ def main() -> None:
                                 "changedSources": data["added"] + data["changed"] + data["removed"][:5]})
         # 输出变化必须能追溯到某个数据面（派生索引/manifest 除外）。
         derived = ("manifest.json", "version.json", "delta.json", "index.json",
-                   "map2d/index.json", "cover/index.json")
+                   "map2d/index.json", "cover/index.json",
+                   # pack 内派生数据：由车辆/模型/弹种源生成，不是独立数据面。
+                   "data/data_version.json", "data/tank_names.json",
+                   "data/shellKinds.json", "data/models.pb", "data/gunMaskSlices.json")
         source_planes = {p for p, d in planes.items()
                          if p not in NON_DATA_PLANES and p != "unmapped"
                          and (d["added"] or d["changed"] or d["removed"])}

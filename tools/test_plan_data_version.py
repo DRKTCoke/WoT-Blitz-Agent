@@ -44,12 +44,52 @@ def write_tree(root: pathlib.Path, files: dict[str, str]) -> None:
         path.write_text(text, encoding="utf-8")
 
 
-def run_plan(base: pathlib.Path, new: pathlib.Path, out: pathlib.Path, strict: bool) -> subprocess.CompletedProcess:
+def run_plan(base: pathlib.Path, new: pathlib.Path, out: pathlib.Path, strict: bool,
+             base_manifest: pathlib.Path | None = None,
+             new_manifest: pathlib.Path | None = None) -> subprocess.CompletedProcess:
     cmd = [sys.executable, "-I", str(TOOL), "--base", str(base), "--new", str(new),
            "--out", str(out)]
     if strict:
         cmd.append("--strict")
+    if base_manifest:
+        cmd += ["--base-pack-manifest", str(base_manifest)]
+    if new_manifest:
+        cmd += ["--new-pack-manifest", str(new_manifest)]
     return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+
+
+def write_manifest(path: pathlib.Path, files: dict[str, str]) -> None:
+    path.write_text(json.dumps({"files": [{"path": p, "sha256": h}
+                                          for p, h in files.items()]}), encoding="utf-8")
+
+
+def coverage_derived_outputs(tmp: pathlib.Path) -> None:
+    """派生 data/ 文件不算 orphan；真正无源的输出仍要失败。"""
+    base, new = tmp / "cov_base", tmp / "cov_new"
+    source = "XML/item_defs/vehicles/usa/A1.xml.dvpl"
+    write_tree(base, {source: "old"})
+    write_tree(new, {source: "new"})
+    manifest_files = {
+        "data/models.pb", "data/data_version.json", "data/tanks.pb",
+        "data/tank_names.json", "data/shellKinds.json",
+        "data/gunMaskSlices.json", "tank/1.json",
+    }
+    base_manifest, new_manifest = tmp / "base_manifest.json", tmp / "new_manifest.json"
+    write_manifest(base_manifest, {p: "old" for p in manifest_files})
+    write_manifest(new_manifest, {p: "new" for p in manifest_files})
+    plan_path = tmp / "coverage_plan.json"
+    result = run_plan(base, new, plan_path, strict=True,
+                      base_manifest=base_manifest, new_manifest=new_manifest)
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["coverage"]["orphanOutput"] == [], plan["coverage"]
+
+    # 无源输出必须被 strict 拒绝。
+    write_manifest(new_manifest, {**{p: "new" for p in manifest_files},
+                                  "other/extra.bin": "new"})
+    result = run_plan(base, new, tmp / "coverage_bad.json", strict=True,
+                      base_manifest=base_manifest, new_manifest=new_manifest)
+    assert result.returncode != 0, "orphan output must fail strict"
 
 
 def main() -> None:
@@ -89,6 +129,8 @@ def main() -> None:
         assert parsed["planes"]["vehicle-xml"]["added"] == 1, parsed
         assert parsed["planes"]["vehicle-xml"]["changed"] == 1, parsed
         assert parsed["counts"]["changed"] == 1, parsed
+
+        coverage_derived_outputs(tmp)
 
         # 未知变化 strict 必须失败。
         (new / "Unknown").mkdir()
