@@ -52,6 +52,9 @@ PROGRESSION_XML = """<upgradeProgression>
       <displayName>Group/Name</displayName>
       <description>Group/Desc</description>
       <icon>~res:/group</icon>
+      <xpCost>20000</xpCost>
+      <gridPosition><row>2</row><column>2</column></gridPosition>
+      <requiredNodes><node>tier11_hp_01</node></requiredNodes>
       <alternativeNodes>
         <node>alt_allow</node>
         <node>alt_other</node>
@@ -61,12 +64,17 @@ PROGRESSION_XML = """<upgradeProgression>
   <nodes>
     <node>
       <id>1</id><techName>tier11_hp_01</techName><nodeType>NODETYPE_COMMON</nodeType>
+      <xpCost>10000</xpCost>
+      <gridPosition><row>1</row><column>1</column></gridPosition>
       <attributes><attribute>
         <attributeName>ATTRIBUTE_NAME_MAX_HEALTH</attributeName><value>100</value>
       </attribute></attributes>
     </node>
     <node>
       <id>2</id><techName>tier11_speed_01</techName><nodeType>NODETYPE_COMMON</nodeType>
+      <xpCost>12000</xpCost>
+      <gridPosition><row>1</row><column>2</column></gridPosition>
+      <requiredNodes><node>tier11_hp_01</node></requiredNodes>
       <attributes><attribute>
         <attributeName>ATTRIBUTE_NAME_FORWARD_MAX_SPEED</attributeName><value>2</value>
       </attribute></attributes>
@@ -89,6 +97,34 @@ PROGRESSION_XML = """<upgradeProgression>
   </nodes>
 </upgradeProgression>"""
 
+# 反例：ALTERNATIVE 节点带 gridPosition/xpCost（客户端不会这样给）
+PROGRESSION_XML_ALT_WITH_GRID = PROGRESSION_XML.replace(
+    '<id>3</id><techName>alt_allow</techName><nodeType>NODETYPE_ALTERNATIVE_MECHANIC</nodeType>',
+    '<id>3</id><techName>alt_allow</techName><nodeType>NODETYPE_ALTERNATIVE_MECHANIC</nodeType>'
+    '<xpCost>5000</xpCost><gridPosition><row>2</row><column>1</column></gridPosition>',
+)
+
+# 反例：requiredNodes 成环（speed_01 ↔ hp_01）
+PROGRESSION_XML_CYCLE = PROGRESSION_XML.replace(
+    '<requiredNodes><node>tier11_hp_01</node></requiredNodes>\n      <attributes><attribute>\n'
+    '        <attributeName>ATTRIBUTE_NAME_FORWARD_MAX_SPEED</attributeName>',
+    '<requiredNodes><node>tier11_speed_01</node></requiredNodes>\n      <attributes><attribute>\n'
+    '        <attributeName>ATTRIBUTE_NAME_FORWARD_MAX_SPEED</attributeName>',
+).replace(
+    '<gridPosition><row>1</row><column>1</column></gridPosition>\n      <attributes><attribute>\n'
+    '        <attributeName>ATTRIBUTE_NAME_MAX_HEALTH</attributeName><value>100</value>',
+    '<gridPosition><row>1</row><column>1</column></gridPosition>\n'
+    '      <requiredNodes><node>tier11_speed_01</node></requiredNodes>\n'
+    '      <attributes><attribute>\n'
+    '        <attributeName>ATTRIBUTE_NAME_MAX_HEALTH</attributeName><value>100</value>',
+)
+
+# 反例：gridPosition 越界（matrix 只有 2x2）
+PROGRESSION_XML_OUT_OF_MATRIX = PROGRESSION_XML.replace(
+    '<gridPosition><row>1</row><column>2</column></gridPosition>',
+    '<gridPosition><row>3</row><column>2</column></gridPosition>',
+)
+
 
 def test_parser_roundtrip() -> None:
     attrs = E.parse_upgrade_attributes(ET.fromstring(ATTRIBUTES_XML))
@@ -101,6 +137,18 @@ def test_parser_roundtrip() -> None:
         "game-version", "client:src", "sha", "client:attrs", "attrs-sha",
     )
     assert [n["id"] for n in progression["nodes"]] == [1, 2, 3, 4], progression
+    # 布局事实：matrix / gridPosition / xpCost / requiredNodes / 组级字段
+    assert progression["matrix"] == {"rows": 2, "columns": 2}, progression
+    assert progression["nodes"][0]["gridPosition"] == [1, 1], progression["nodes"][0]
+    assert progression["nodes"][0]["xpCost"] == 10000, progression["nodes"][0]
+    assert "requiredNodes" not in progression["nodes"][0], progression["nodes"][0]
+    assert progression["nodes"][1]["gridPosition"] == [1, 2], progression["nodes"][1]
+    assert progression["nodes"][1]["requiredNodes"] == ["tier11_hp_01"], progression["nodes"][1]
+    for key in ("gridPosition", "xpCost", "requiredNodes"):
+        assert key not in progression["nodes"][2], (key, progression["nodes"][2])
+    assert progression["alternativeGroups"][0]["xpCost"] == 20000, progression
+    assert progression["alternativeGroups"][0]["gridPosition"] == [2, 2], progression
+    assert progression["alternativeGroups"][0]["requiredNodes"] == ["tier11_hp_01"], progression
     assert progression["nodes"][2]["attributes"] == [
         {"name": "SAS_ALLOW_ACTIVATE_ON_HIT", "value": True}
     ], progression
@@ -112,6 +160,9 @@ def test_parser_roundtrip() -> None:
     assert progression["alternativeGroups"] == [{
         "id": "tier11_choice",
         "choices": [3, 4],
+        "xpCost": 20000,
+        "gridPosition": [2, 2],
+        "requiredNodes": ["tier11_hp_01"],
         "icon": "~res:/group",
         "displayName": "Group/Name",
         "description": "Group/Desc",
@@ -136,6 +187,24 @@ def test_parser_roundtrip() -> None:
     }
     # 顶级 = 所有非 alternative 节点 + 每个组首个 choice：100 + (alt_other 50 不计)
     assert E.upgrade_top_hp(tank, progression) == 1600
+
+
+def test_layout_fail_closed() -> None:
+    """布局字段反例：alternative 带 grid、requiredNodes 成环、gridPosition 越界。"""
+    attrs = E.parse_upgrade_attributes(ET.fromstring(ATTRIBUTES_XML))
+    for name, xml in (
+        ("alternative with grid", PROGRESSION_XML_ALT_WITH_GRID),
+        ("requiredNodes cycle", PROGRESSION_XML_CYCLE),
+        ("gridPosition outside matrix", PROGRESSION_XML_OUT_OF_MATRIX),
+    ):
+        try:
+            E.parse_upgrade_progression(ET.fromstring(xml), attrs,
+                                        "game-version", "client:src", "sha",
+                                        "client:attrs", "attrs-sha")
+        except ValueError as exc:
+            assert "upgrade" in str(exc), (name, exc)
+        else:
+            raise AssertionError(f"{name}: expected ValueError")
 
 
 def test_real_preview_artifact() -> None:
@@ -274,6 +343,7 @@ def test_module_durability_params() -> None:
 
 def main() -> None:
     test_parser_roundtrip()
+    test_layout_fail_closed()
     test_real_preview_artifact()
     test_xi_item_catalogs()
     test_module_durability_params()

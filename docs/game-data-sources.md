@@ -363,11 +363,46 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线；`tank-burst-dpm-20261104`
   release 保留作超测通道回滚。弹种表 2090 → **2099**（+9 个新弹种 ID）。
+- **XI 研发界面定位（2026-11-07，客户端 UI 事实）**：XI 车在车库车辆详情的升级页签
+  （`TankImprovements/Tab/UpgradeProgression` = **AUGMENTS**）不是 1-10 的 ModulesTree
+  模块研发，而是独立界面 `Data/UI/Screens3/Lobby/Inventory/TankProgress/UpgradeProgression/`
+  （`UpgradeProgression.yaml` 96×96 网格矩阵 + `UpgradeAlternativeGroup*` 三选一增强组 +
+  `UnlockUpgradeDialog` 经验解锁对话框；父屏 `TankUpgrades.yaml`，右侧 VehicleParamsPanel
+  mode=`eTankParamsMode.UpgradeProgression`）。数据面 = 车辆 XML `<upgradeProgression>`
+  （matrix rows×columns、nodes 的 id/techName/nodeType/xpCost/gridPosition/requiredNodes/
+  attributes、`alternativeMechanicGroups` 组：xpCost/gridPosition/requiredNodes/
+  alternativeNodes[3]）+ 全局 `XML/item_defs/vehicles/common/tank_upgrade_attributes.xml`
+  （98 条属性定义：modifier/script/params/icon/titleKey）。与 1-10 的差异：**无模块研发/
+  无银币购买步骤**，每个节点直接消耗经验（战斗经验 → 全局经验 → 精英经验，金币按
+  `eliteToFreeXpConversionGoldRate=25` 兑换，对话框绑定表达式 `battleXpNeeded =
+  min(tankXp, xpCost)` 等纯函数给出三态 FreeXp/EliteXp/NotEnoughXp，不足时按钮转
+  `ProceedToStore`）；前置未研发时解锁报 `UnlockErrorDialog`（"Research all previous
+  modules."）；节点渲染 COMMON=圆（r32）/ MECHANIC=45° 菱形（r8，notable 推断对应
+  `NODETYPE_MECHANIC`），备选组安装后三枚六边 augment 节点（`t11_augment_*` 贴图）
+  竖排右侧扇出，选中其一为该机制永久选择（组 26000–50000 XP；单车节点总消耗实测
+  28–36.4 万 XP）。本版 strings 仅 7 条 `UpgradeProgression/*` 有文案（zh-Hans 亦为英文），
+  `TankUpgrade/Attribute/*` 与组名/描述键未本地化（客户端原样显示原始键）。连线布线
+  （正交 L、箭头方向）由客户端原生 VM 计算、数据层无路径坐标，属复刻推断；全量
+  46876 个 ZIP 成员清单与界面/图标/贴图提取工具在 gitignored `tmp_analysis/`
+  （`list_zip_members.py` / `fetch_upgrade_ui.py` / `fetch_upgrade_assets.py` /
+  `build_replica_data.py`，产物 `.t11p2/ui_progression/`）。
+- **XI 研发界面布局字段导出（2026-11-08，契约增量）**：`export_research_loadout.py` 的
+  `upgradeProgression` 导出新增研发树布局事实——`matrix {rows, columns}`、节点
+  `gridPosition [row,column]` / `xpCost` / `requiredNodes`（techName，导出时解析校验
+  并做无环检查）、组 `xpCost` / `gridPosition` / `requiredNodes`。fail-closed：
+  COMMON/MECHANIC 节点缺 gridPosition/xpCost、ALTERNATIVE 带这两者或 requiredNodes、
+  格位越界、前置不可解析或成环一律报错（`tools/test_upgrade_progression.py` 覆盖三个
+  反例）。消费方 = WotbTools `TankAugmentTree.vue`（XI 研发界面复刻，2026-11-08 起
+  随 wotbVersion 4.9.0 发布）；旧消费方（stock/top 投影）字段全为增量，不受影响。
 - ⚠️ 组包教训（`cp -al` 后的覆盖必须断链）：本地组包曾用普通 `cp` 覆盖硬链接共享
   inode，把基线包的 pb/tank_cache/research/manifest/version 一度写穿成 t11p2 内容
   （`version.json`/`manifest.json` 两侧 stamp/refresh 轮流互写）；已从仓库源/git HEAD
   **断链恢复**（rm 后重写），双包 `verify --full` PASS。生产不受影响（上传发生在污染
-  前，主机侧 manifest/version/文件三方 sha 核验一致）。
+  前，主机侧 manifest/version/文件三方 sha 核验一致）。2026-11-07 主机复发同型事故：
+  `asset_release.py` 的 `write_json` 原地 `write_text`，在 `cp -al` 克隆的 r8 上
+  stamp/delta 把 r7 的 `version.json`/`delta.json` 一并改写；已断链恢复（catalog 快照
+  回填 + manifest_sha256 实测校验），`write_json` 改 temp + `os.replace` 原子替换并配
+  硬链接回归测试。任何往 release 树写元数据的工具都必须换 inode，不能原地截断。
 
 **产物与边界（t11b 历史）**：
 
