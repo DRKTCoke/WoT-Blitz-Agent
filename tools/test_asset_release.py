@@ -7,6 +7,7 @@
 """
 import hashlib
 import json
+import os
 import pathlib
 import sys
 import tempfile
@@ -299,6 +300,25 @@ def test_stamp_dry_run_does_not_write_version():
         })()
         assert ar.command_stamp(args) == 0
         assert not (pack / "version.json").exists()
+
+
+def test_write_json_does_not_truncate_hardlinked_sibling():
+    # 2026-11-07 r8 事故回归：cp -al 硬链接克隆后原地 write_text 会截断共享 inode，
+    # 把上一 release 的同名文件一并改坏；write_json 必须 temp + os.replace 换 inode。
+    with tempfile.TemporaryDirectory() as tmp:
+        prev = pathlib.Path(tmp) / "prev"
+        nxt = pathlib.Path(tmp) / "next"
+        prev.mkdir()
+        nxt.mkdir()
+        original = '{"schema": 1, "release": "prev"}\n'
+        (prev / "version.json").write_text(original, encoding="utf-8")
+        os.link(prev / "version.json", nxt / "version.json")
+        assert (prev / "version.json").stat().st_nlink == 2
+        ar.write_json(nxt / "version.json", {"schema": 1, "release": "next"})
+        assert (prev / "version.json").read_text(encoding="utf-8") == original
+        assert json.loads((nxt / "version.json").read_text(encoding="utf-8"))["release"] == "next"
+        assert (prev / "version.json").stat().st_nlink == 1
+        assert not (nxt / "version.json.tmp").exists()
 
 
 if __name__ == "__main__":
