@@ -251,10 +251,28 @@ def parse_upgrade_progression(
 
     节点按 id 唯一；`alternativeMechanicGroups` 的 `choices` 是
     `<alternativeNodes>` 里 techName 对号后的 id（客户端只给 techName）。
+
+    研发界面布局事实（2026-11-08 起，WotbTools TankAugmentTree 消费）：
+    - `matrix` rows/columns（客户端 96px 格网）；
+    - 节点 `gridPosition` [row, column]（客户端顺序）、`xpCost`、`requiredNodes`
+      （techName，全部必须可解析、无环）；
+    - 组 `xpCost`、`gridPosition`、`requiredNodes`。
+    fail-closed：COMMON/MECHANIC 节点必须有 gridPosition+xpCost；ALTERNATIVE
+    节点必须没有这两者与 requiredNodes（客户端如此）；gridPosition 越界、
+    requiredNodes 不可解析或成环直接报错。
     """
+    matrix_el = el.find("matrix")
+    if matrix_el is None:
+        raise ValueError("upgradeProgression without <matrix> (fail-closed)")
+    matrix_rows = fint(matrix_el, "rows")
+    matrix_columns = fint(matrix_el, "columns")
+    if not matrix_rows or not matrix_columns:
+        raise ValueError(f"invalid upgrade matrix {matrix_rows!r}x{matrix_columns!r}")
+
     nodes: list[dict] = []
     ids: set[int] = set()
     by_tech: dict[str, int] = {}
+    pending_required: dict[int, list[str]] = {}
     for node_el in el.findall("./nodes/node"):
         node_id = fint(node_el, "id")
         tech_name = ftext(node_el, "techName")
@@ -286,6 +304,35 @@ def parse_upgrade_progression(
             "type": node_type,
             "attributes": attributes,
         }
+        # 研发界面布局事实：gridPosition [row, column]（客户端顺序）与 xpCost。
+        # COMMON/MECHANIC 必有；ALTERNATIVE 必无（客户端只给组级 xpCost）。
+        grid_el = node_el.find("gridPosition")
+        xp_cost = fint(node_el, "xpCost")
+        if node_type == "NODETYPE_ALTERNATIVE_MECHANIC":
+            if grid_el is not None or xp_cost is not None:
+                raise ValueError(
+                    f"alternative upgrade node {tech_name} must not carry gridPosition/xpCost"
+                )
+        else:
+            if grid_el is None:
+                raise ValueError(f"upgrade node {tech_name} without gridPosition (fail-closed)")
+            row = fint(grid_el, "row")
+            column = fint(grid_el, "column")
+            if not row or not column or row > matrix_rows or column > matrix_columns:
+                raise ValueError(
+                    f"upgrade node {tech_name} gridPosition ({row!r},{column!r}) "
+                    f"outside matrix {matrix_rows}x{matrix_columns}"
+                )
+            node["gridPosition"] = [row, column]
+            if xp_cost is None:
+                raise ValueError(f"upgrade node {tech_name} without xpCost (fail-closed)")
+            node["xpCost"] = xp_cost
+        required = [child.text.strip() for child in node_el.findall("./requiredNodes/node")
+                    if isinstance(child.tag, str) and child.text]
+        if node_type == "NODETYPE_ALTERNATIVE_MECHANIC" and required:
+            raise ValueError(f"alternative upgrade node {tech_name} must not have requiredNodes")
+        if required:
+            pending_required[node_id] = required
         # 节点级展示元数据：客户端只在部分节点（多为 alternative 选项）给出；
         # 有则保留（与 WotbTools fixture 同形状），没有就不写字段。
         for key in ("displayName", "description", "icon"):
@@ -315,6 +362,33 @@ def parse_upgrade_progression(
         if not choices:
             raise ValueError(f"upgrade group {group_id} has no alternative nodes")
         group = {"id": group_id, "choices": choices}
+        # 组级布局事实：xpCost + gridPosition + requiredNodes（研发界面）。
+        group_grid_el = group_el.find("gridPosition")
+        group_xp = fint(group_el, "xpCost")
+        if group_grid_el is None or group_xp is None:
+            raise ValueError(
+                f"upgrade group {group_id} without gridPosition/xpCost (fail-closed)"
+            )
+        group_row = fint(group_grid_el, "row")
+        group_column = fint(group_grid_el, "column")
+        if (not group_row or not group_column
+                or group_row > matrix_rows or group_column > matrix_columns):
+            raise ValueError(
+                f"upgrade group {group_id} gridPosition ({group_row!r},{group_column!r}) "
+                f"outside matrix {matrix_rows}x{matrix_columns}"
+            )
+        group["xpCost"] = group_xp
+        group["gridPosition"] = [group_row, group_column]
+        group_required = [child.text.strip()
+                          for child in group_el.findall("./requiredNodes/node")
+                          if isinstance(child.tag, str) and child.text]
+        for tech_name in group_required:
+            if tech_name not in by_tech:
+                raise ValueError(
+                    f"upgrade group {group_id} requires unknown node {tech_name!r}"
+                )
+        if group_required:
+            group["requiredNodes"] = group_required
         for key in ("icon", "displayName", "description"):
             value = ftext(group_el, key)
             if value:
@@ -325,12 +399,58 @@ def parse_upgrade_progression(
         if node["type"] == "NODETYPE_ALTERNATIVE_MECHANIC" and node["id"] not in grouped_nodes:
             raise ValueError(f"ungrouped alternative upgrade node {node['techName']}")
 
+    # requiredNodes 解析（此时全部节点已入表）+ 无环校验（拓扑着色）。
+    tech_to_node = {node["techName"]: node for node in nodes}
+    for node in nodes:
+        node_id = node["id"]
+        if node_id not in pending_required:
+            continue
+        resolved = []
+        for tech_name in pending_required[node_id]:
+            target = tech_to_node.get(tech_name)
+            if target is None:
+                raise ValueError(
+                    f"upgrade node {node['techName']} requires unknown node {tech_name!r}"
+                )
+            if target["type"] == "NODETYPE_ALTERNATIVE_MECHANIC":
+                raise ValueError(
+                    f"upgrade node {node['techName']} requires alternative node {tech_name!r}"
+                )
+            resolved.append(tech_name)
+        node["requiredNodes"] = resolved
+    WHITE, GREY, BLACK = 0, 1, 2
+    color = {node["techName"]: WHITE for node in nodes}
+    for node in nodes:
+        if color[node["techName"]] != WHITE:
+            continue
+        stack = [(node["techName"], iter(node.get("requiredNodes", ())))]
+        color[node["techName"]] = GREY
+        while stack:
+            tech_name, edges = stack[-1]
+            advanced = False
+            for edge in edges:
+                state = color.get(edge, BLACK)
+                if state == GREY:
+                    raise ValueError(
+                        f"upgrade requiredNodes cycle at {edge!r} (via {tech_name!r})"
+                    )
+                if state == WHITE:
+                    color[edge] = GREY
+                    stack.append((edge, iter(tech_to_node[edge].get("requiredNodes", ()))))
+                    advanced = True
+                    break
+                # BLACK：已完结，跳过
+            if not advanced:
+                color[tech_name] = BLACK
+                stack.pop()
+
     # 只带本车节点实际引用的定义（与 WotbTools fixture 同口径）：属性表是全局的
     # 98 条，逐车全量复制会无谓放大模块 JSON；消费方只按节点属性名查表。
     used = {attr["name"] for node in nodes for attr in node["attributes"]}
     used_definitions = {name: attribute_definitions[name] for name in sorted(used)}
 
     return {
+        "matrix": {"rows": matrix_rows, "columns": matrix_columns},
         "nodes": nodes,
         "alternativeGroups": groups,
         "attributeDefinitions": used_definitions,

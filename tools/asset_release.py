@@ -73,7 +73,12 @@ def canonical_json(value: object) -> str:
 
 
 def write_json(path: Path, value: object) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    # 原子替换（temp + os.replace）：release 树常用 cp -al 硬链接克隆，原地 write_text
+    # 会截断共享 inode，把上一 release 的同名元文件（version.json/delta.json）一并改坏
+    # （2026-11-07 r8 发布时 r7 元数据污染事故）。os.replace 换 inode，旧链接不受影响。
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def load_json(path: Path) -> dict:
