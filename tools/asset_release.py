@@ -14,7 +14,8 @@
     时间戳，因此同内容重建得到同一个 digest。
   * `manifest.json`、`version.json`、`delta.json`、`overhead/` 是发布元数据/中间件，
     不进入 content_digest；除此之外 manifest 未登记的文件视为发布内容不完整，fail-closed。
-  * dataset_id 只允许小写字母、数字、`.`、`-`，禁止 `+` / `/` / `_`，保证可直接进 URL。
+  * dataset_id 只允许小写字母、数字、`.`、`-`、`_`（均为 URL 安全字符；`_` 用于
+    客户端 SmartDLC 槽位命名，如 `11.21.0_1`），禁止 `+` / `/`。
 
 用法：
   python tools/asset_release.py stamp --pack release/asset_pack \
@@ -44,7 +45,9 @@ CONTRACT = "asset-pack-v1"
 NON_CONTENT_FILES = {"manifest.json", "version.json", "delta.json"}
 NON_CONTENT_PREFIXES = ("overhead/",)
 
-DATASET_ID_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$")
+# `_` 用于客户端 SmartDLC 槽位命名（如 11.21.0_1，对应 s11.21.0_1.yaml）；
+# 允许的字符均为 URL 安全字符，可直接进 /v/<id>/ 路径。
+DATASET_ID_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
 STATUSES = {"active", "deprecated", "revoked"}
 
 
@@ -96,7 +99,7 @@ def load_json(path: Path) -> dict:
 def validate_dataset_id(dataset_id: str) -> None:
     if not DATASET_ID_RE.match(dataset_id):
         raise ReleaseError(
-            f"dataset_id 非法: {dataset_id!r}（只允许小写字母/数字/./-，1-64 字符，"
+            f"dataset_id 非法: {dataset_id!r}（只允许小写字母/数字/./-/_，1-64 字符，"
             "必须首尾为字母或数字）"
         )
 

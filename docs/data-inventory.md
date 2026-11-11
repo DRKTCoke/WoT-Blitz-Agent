@@ -84,7 +84,8 @@
 | `data/research/`（研发/配置数据面，132 文件 ≈3.80 MB） | **本机客户端解包**：`tools/export_research_loadout.py`（`meta.json` 记 `11.21.0.1235_7376187 release/11.21.0` + 逐文件 sha256） | 不适用（客户端独有；BlitzKit 只作公式/展示参照，不作数据源） | ✅ 数据 100%：738 辆 / 9 国别模块（纯 11.21；预览增量留在 `data/research_t11_preview/`，不并入现役包；含 `hasTurret`（客户端 `<hull><fakeTurrets>` 标记）、gun `rotationSpeed`、gun/chassis `dispersionFactors`、chassis `hysteresisHealth`/`healthRegenPerSec`/`hullPosition`/`maxLoad`（kg）、车辆级 chassis/hull 碰撞盒 + 逐炮塔盒 + `turretOrigin`/`initialTurretRotation`；技能效果取 `XML/item_defs/tankmen/avatar.xml`，弹种图标取 `Gfx/Shared/tank-supply/ammunition`；物品名缺基础 Strings 时用运行时本地化覆盖层（zh-Hans）+ 5 条 en 补充名）、24 设备 + 9 预设、64 消耗品（common 13）/ 85 补给（common 34）、20 项乘员技能（客户端 avatar.xml 的 per-level 效果 + class 归属）、9 张弹种图标、20 张技能图标、params `format` 70 键、en + zh-Hans 46 条文案、5 张模块图集 | **全部非图标数据随资产包 `research/**` 发布**（全局目录/物品/技能/params/strings/camouflage/meta + 逐车 `modules/{nation}.json`；WotbTools assetProvider 加载；新坦克/物品数值只需更新资产包，不需前端发版）；全局图标集留在 WotbTools `common/research/icons/`；不改 WASM pin。科技树坐标 + 整车研发边随 `--with-research-graph` 落盘为 `tech_tree/{nation}.json`（9 文件：304 节点、0 pending、310 条整车边；列≠tier，tier 读 list.xml；随资产包 `research/tech_tree/**` 发布，WotbTools `agent-techtree` 消费）；ru 文案回退 en。口径与消费契约见 [wotbtools-research-loadout-plan.md](wotbtools-research-loadout-plan.md) |
 | 数据版本差异计划 / pack 复用 | `tools/plan_data_version.py` v2（全量源清单：目录 sha256、ZIP CRC32+size；plane 分类；tank_id/map space 解析；`wholeTable`/pins；`--strict` fail-closed）+ `tools/apply_data_version.py`（`pack_incremental` 硬链接克隆/同哈希复用/断链覆盖/孤儿删除；`data_version_handlers` 注册表：research、vehicle-assets 逐车 GLB/悬挂/履带/图标、core 整表重算只覆盖变化字节、maps 按 space 重导 + 2D/变体整表） | `change_plan.json` / `<out>.apply.json`；`data_version.json` 追加 `base_game_version`/`new_game_version`/`source_plan_sha256`/`changed_planes`/`coverage`/`scope`/`inputs` | ✅ 差异驱动；车辆资产逐项、core 整表但只覆盖变化字节、地图 2D/变体整表（用户选定） |
 | 解包底座（DVPL/DAVA 容器、DLC `packs/` 覆盖层） | 本机自产代码（Rust `dvpl.rs` + Python `tools/wotbtools/`，fail-closed 两端对齐） | 不适用 | ✅ 100/100 | 本地链硬前提：需本机装客户端（`Data/` + `packs/`），游戏版本更新后整链重跑 |
-| 11.22 tier XI 预览包（`release/asset_pack_t11p2_preview/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）的 5 辆 XI 车 + 现役 11.21 包（t11b 前代源 `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11p2-20261106-r7`，dataset **`supertest`**/超测服，显式通道；r7 相对 r6 仅 4 个文件，5 辆 XI 的 modules 新增 `vehicleAbilities`（rechargeableNitro/combatFrenzy/rammingConfiguration/burstMode/steadyAimSystem）+ meta 哈希；r6 同步预览 strings；r5 补 42 个模块耐久参数；r4 及更早保留回滚） | **743 辆（738+5）**：BZ-79（15153）/ Object 432U（27905，数值随 t11p2 更新）+ 新实装 `R228_KR_1`（28161）/ `A179_Black_Rock`（30241，收藏车不上树）/ `A183_XM69_Hacker`（30497）；manifest **6000 件 / 4460.9 MB**，GLB `tex_fail=[]`；2026-11-06 r2 重建相对旧 `t11p2-20261106` 717 件变更（708 个 tank JSON 对齐 11.21 burst 字段）；r3 相对 r2 仅 5 件（预览车 `model_gun/turret_count` 0→1/1）；r4 修复 5 辆 XI 顶层 `armor`（客户端 `primaryArmor`；XM69 135/80/40、210/90/55）并重算 `tank_cache` 739/743 条摘要，新增 `upgradeProgression`（5 辆）与 `hp_top`（2200/2850/3100/2900/2200），consumables/provisions 过滤器扩到 tier 11（65/89，common 14/38）；r5 补 `modulesDumpSection` 42 个模块耐久参数（params/format 70→112，数据 only、不展示）；r6 同步预览 strings/meta（`meta.gameVersion` 切到 11.22，46→47 条，23 条去掉 `<text_units>` 包裹）；r7 为 5 辆 XI modules 新增 `vehicleAbilities`（源 = 车辆 XML `<extras>` 中 item 目录声明 `<isVehicleAbility>` 的标签；meta 只刷新 3 个 module 哈希）；旧 `t11p2-20261106` 相对 `tank-burst-dpm-20261104` 42 件变更；科技树 308 节点 / 4 pending / 314 边；弹种表 2099（+9）；4 辆新车封面为客户端 128² 占位图（XM69 为真图）；BZ-79 第二弹种 `<kind>` 与 icon 冲突；`current -> datasets/11.21.0`（超测通道显式选择）；旧 `tank-burst-dpm-20261104` 及更早 release 均保留回滚；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
+| 11.22 tier XI 预览包（`release/asset_pack_t11p2_preview/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）的 5 辆 XI 车 + 现役 11.21 包（t11b 前代源 `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11p2-20261106-r8`，dataset **`11.4.0.130`**/超测服（2026-11-11 由 `supertest` 改名，对齐超测客户端自身版本号），显式通道；r8 相对 r7 仅 4 个文件，XI upgradeProgression 布局字段；r7 为 5 辆 XI modules 新增 `vehicleAbilities`；r6 同步预览 strings；r5 补 42 个模块耐久参数；r4 及更早保留回滚） | **743 辆（738+5）**：BZ-79（15153）/ Object 432U（27905，数值随 t11p2 更新）+ 新实装 `R228_KR_1`（28161）/ `A179_Black_Rock`（30241，收藏车不上树）/ `A183_XM69_Hacker`（30497）；manifest **6000 件 / 4460.9 MB**，GLB `tex_fail=[]`；2026-11-06 r2 重建相对旧 `t11p2-20261106` 717 件变更（708 个 tank JSON 对齐 11.21 burst 字段）；r3 相对 r2 仅 5 件（预览车 `model_gun/turret_count` 0→1/1）；r4 修复 5 辆 XI 顶层 `armor`（客户端 `primaryArmor`；XM69 135/80/40、210/90/55）并重算 `tank_cache` 739/743 条摘要，新增 `upgradeProgression`（5 辆）与 `hp_top`（2200/2850/3100/2900/2200），consumables/provisions 过滤器扩到 tier 11（65/89，common 14/38）；r5 补 `modulesDumpSection` 42 个模块耐久参数（params/format 70→112，数据 only、不展示）；r6 同步预览 strings/meta（`meta.gameVersion` 切到 11.22，46→47 条，23 条去掉 `<text_units>` 包裹）；r7 为 5 辆 XI modules 新增 `vehicleAbilities`（源 = 车辆 XML `<extras>` 中 item 目录声明 `<isVehicleAbility>` 的标签；meta 只刷新 3 个 module 哈希）；r8 为 china/usa/ussr 三国 XI modules 补 `upgradeProgression` 布局字段（`matrix{rows,columns}`、逐节点 `gridPosition`/`xpCost`/`requiredNodes`，COMMON/MECHANIC 必填、ALTERNATIVE 必无）+ meta；旧 `t11p2-20261106` 相对 `tank-burst-dpm-20261104` 42 件变更；科技树 308 节点 / 4 pending / 314 边；弹种表 2099（+9）；4 辆新车封面为客户端 128² 占位图（XM69 为真图）；BZ-79 第二弹种 `<kind>` 与 icon 冲突；`current -> datasets/11.21.0`（超测通道显式选择）；旧 `tank-burst-dpm-20261104` 及更早 release 均保留回滚；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
+| 11.21.0_1 动态内容槽位包（`release/asset_pack_11210_1/`，**本地待发布**） | 客户端 SmartDLC `s11.21.0_1.yaml`（2026-11-10 发布：dc `7405732/3/4` 贴图 + 活动/offer 文案 + 收藏车 Relic 注册文案） | 不适用 | ⏳ 本地就绪（release `11.21.0_1-20261111-r1`，dataset `11.21.0_1`；数据面 = 11.21.0-20261106-r2 的硬链接克隆，**逐字节一致**、同 content_digest `sha256:9198d0ca…`，5965 件 / 738 辆——动态内容本身走客户端运行时通道，不进包；待 11.21.1 客户端数据后充实） | 占位登记：版本选择器显式暴露 11.21 内部微更新槽位；与 11.21.0 的唯一差异是 version.json 身份；见 [index.md](index.md) 2026-11-11 条目 |
 
 引擎产物（WASM Release，`wotb-replay-wasm-*.zip`）构建自 `crates/replay-core|wasm`，**不含
 任何 pb**；上表三张注入表（车型名 / 俯仰锚定 / 弹种表）是消费方的间接数据面——它们的
@@ -133,10 +134,15 @@
   manifest 的 path→sha256 与语义化 `data_version` 决定（排除 `generated`、`upstream_commit`、
   `worktree_dirty` 与重新提取的时间戳），同内容重建不漂移。`manifest.json` /
   `version.json` / `delta.json` / `overhead/` 是发布元数据/中间件，不进入内容清单。
-  当前生产登记的两个 dataset（2026-11-06 通道重组）：`supertest`（超测服，743 辆，
-  release `t11p2-20261106-r3`，**显式选择**；随预览轮次重指，不再按预览轮次堆 dataset）与
-  `11.21.0`（738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）；`11.22` 通道待正式服包发布时加入
-  （终态三通道：超测服 / 11.21 / 11.22）。`current` 指向 default。`/versions.json` 与
+  当前生产登记的三个 dataset（2026-11-11 命名对齐客户端，origin 发布待执行）：`11.21.0`
+  （738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）、
+  `11.21.0_1`（SmartDLC 动态内容槽位命名，release `11.21.0_1-20261111-r1`，数据面与 11.21.0
+  **逐字节一致**、同 content_digest——动态内容走客户端运行时通道，待 11.21.1 客户端数据充实）与
+  `11.4.0.130`（超测客户端自身版本号，label 超测服，743 辆，release `t11p2-20261106-r8`，
+  **显式选择**；2026-11-11 由 id `supertest` 改名，旧 `?data=supertest` 链接随之失效）。
+  dataset_id 字符集含 `_`（本日放宽；`?data=` 引入 `_` id 前须先部署放宽校验的 WotbTools
+  前端 bundle）。`11.22` 通道待正式服包发布时加入
+  （终态通道：超测服 / 11.21 / 11.22）。`current` 指向 default。`/versions.json` 与
   `/v/<id>/...` 需 WotbTools 的 Caddyfile redeploy 后生效（2026-11-06 已上线，回读 200）。工具
   `tools/asset_release.py`（`stamp` / `catalog` / `verify` / `delta`）与前端选择器契约见
   [game-data-sources.md](game-data-sources.md) §5.2
@@ -150,7 +156,7 @@
   [asset-store.md](asset-store.md)
 
 **当前包内布局**（本地实测；本地 11.21 包 **5965 个文件 / 4433.0 MB**；线上当前
-`t11p2-20261106-r3` 为 **743 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
+`t11p2-20261106-r8` 为 **743 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
 **6000 个文件 / 逻辑 4460.9 MB**（manifest 逐文件字节和口径；历史 4444.3 MB 为 du 块
 分配口径），manifest 0 mismatch；相对 `tank-burst-dpm-20261104`（740 辆，超测通道回滚版；
 其 226 件 `tank/*.json` = 连发组 `burst_group_*` 36 件 + 弹径权威 `caliber` 207 件）
@@ -162,7 +168,7 @@
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
 （738 辆）计数；`map2d`/`cover` 行按 43 图 + index 计数（36 基础图 + 7 个变体，均有独立 2D/封面）。
 线上当前默认 release 为 `11.21.0-20261106-r2`（738 辆，5965 件 / 4433.0 MB，含
-`research/tech_tree/**`）；超测通道 `supertest` 为 743 辆（release `t11p2-20261106-r3`，manifest 6000 件 /
+`research/tech_tree/**`）；超测通道 `11.4.0.130`（原 `supertest`）为 743 辆（release `t11p2-20261106-r8`，manifest 6000 件 /
 4460.9 MB），仅显式选择；逐代增量见
 [game-data-sources.md](game-data-sources.md) §5.2 release 链）：
 
