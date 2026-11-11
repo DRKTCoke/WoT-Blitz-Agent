@@ -636,7 +636,14 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
 ```
 
 - `dataset_id` 由 `game_version` 派生并进 URL：`release/11.21.0` → `11.21.0`；
-  预览变体 → `11.21.0-t11-preview`（**禁止 `+` / `/` / `_`**）。
+  预览变体 → `11.21.0-t11-preview`；客户端 SmartDLC 槽位 → `11.21.0_1`。
+  字符集 = 小写字母/数字/`.`/`-`/`_`（均 URL 安全；2026-11-11 放宽 `_` 以容纳客户端
+  `s<ver>_<slot>` 槽位命名），禁止 `+` / `/`。两侧同款正则校验：本仓 `asset_release.py`
+  与 WotbTools `useDataVersion.ts`——**origin 的 `versions.json` 引入新字符集 id 之前，
+  必须先部署放宽后的前端 bundle**（旧 bundle 对 catalog 整目录 fail-closed）。
+  当前 dataset 登记：`11.21.0`（default，客户端基线命名）/ `11.21.0_1`（动态内容槽位，
+  数据面与 11.21.0 逐字节一致）/ `11.4.0.130`（超测客户端版本号，label 超测服；
+  2026-11-11 由 `supertest` 改名，未打补丁基线不用 `_0`——客户端无该命名）。
 - 每个 release 内的 `version.json` 是不可变身份：`dataset_id` / `game_version` /
   `variant` / `release` / `generated` / `content_digest` / `manifest_sha256` /
   `tank_count` / `preview` / `min_client` / `status`。

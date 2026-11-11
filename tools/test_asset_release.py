@@ -321,6 +321,18 @@ def test_write_json_does_not_truncate_hardlinked_sibling():
         assert not (nxt / "version.json.tmp").exists()
 
 
+def test_dataset_id_allows_client_smartdlc_slot_naming():
+    # 2026-11-11：`_` 放行，用于客户端 SmartDLC 槽位命名（s11.21.0_1.yaml）
+    for ok in ("11.21.0", "11.21.0_1", "11.4.0.130", "supertest", "a", "a-b_c.d"):
+        ar.validate_dataset_id(ok)
+    for bad in ("", "-lead", "trail-", "UPPER", "with/slash", "with+plus", "with space", "a" * 65):
+        try:
+            ar.validate_dataset_id(bad)
+        except ar.ReleaseError:
+            continue
+        raise AssertionError(f"dataset_id 应拒绝: {bad!r}")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:
