@@ -251,8 +251,8 @@ WotbTools 经 assetProvider 加载，**不进入前端 bundle**。全局图标�
 （20,878,922,119 B ≈ 19.4 GiB，Last-Modified 2026-11-12；`version.txt.dvpl` =
 `11.4.0.138_7408695 11.22_supertest_tier11_6 WOTB_Win7`）。dataset **`11.4.0.138`**
 （label「超测服 11.4.0.138」）指向该包构建的 release `t11r3-20261113-r1` → 现役
-**`t11r3-20261113-r2`**（**6026 件 / 4482.5 MB / 747 辆 = 738 + 9 XI**，
-`content_digest sha256:6e77f8d6…`；r1 保留回滚）。上一轮 dataset `11.4.0.130`
+**`t11r3-20261113-r3`**（**6026 件 / 4482.5 MB / 747 辆 = 738 + 9 XI**，
+`content_digest sha256:634da494…`；r1/r2 保留回滚）。上一轮 dataset `11.4.0.130`
 （`t11p2-20261106-r9`）保留作回滚。
 
 **实装范围（t11p2）**：`list.xml` 共 5 辆 level 11：
@@ -304,7 +304,8 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   manifest **6026 件 / 4482.5 MB**；`data_version` = `release/11.21.0+t11r3`（preview：
   client_version `11.22_supertest_tier11_6`，tanks 9 辆 ID）。dataset `11.4.0.138`，
   release `t11r3-20261113-r2`，`content_digest sha256:6e77f8d6…`；r1 为同日首发（保留回滚），
-  r2 相对 r1 仅 2 件（`data/tank_cache.json` + `data/data_version.json`）。
+  r2 相对 r1 仅 2 件（`data/tank_cache.json` + `data/data_version.json`）；r3 相对 r2 仅 2 件
+（`research/modules/japan.json` 的 `provenance.attributeDuplicates` + `research/meta.json`）。
 - **两包 CRC 对比是本轮提取的定位依据**：t11p2 ↔ t11r3 的 central directory 逐成员 CRC
   比对（只读 Range，不下载 20 GB）得到 added 216 / removed 3 / changed 143；按平面：
   `vehicle-xml` 9 changed + 4 added、`vehicle-components` 18（france/germany/japan ×
@@ -334,6 +335,14 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   `icon_external_ammo_module_allow_non_damagimg_hits` 替换——客户端拼写 `damagimg` 原样保留），
   图标本体由 `tools/export_augment_icons.py` 从 ZIP Range 取出（@2x、alpha 裁边、无损 webp）
   落到 WotbTools `common/research/icons/upgrades/`。
+- **客户端数据异常登记（r3）**：Ho-Ri 4 的 `tier11_dmg_main_gun_01` 在客户端 XML 里把
+  `ATTRIBUTE_NAME_SHELL_DAMAGE_SLOT_2` 写了**两遍（30 / 55）且没有 `SLOT_3`**（9 辆 XI 全库
+  仅此 1 处）。按客户端「同节点同名属性逐条叠加（MODIFIER_ADD）」语义，槽位 2 累计 +85，
+  于是点满后 **APCR 625 > AP 600**、HE 拿不到那 +55（若 55 本意是 SLOT_3，HE 应为 700）。
+  处置：**数值照原样导出**（不替客户端纠错），异常写入
+  `upgradeProgression.provenance.attributeDuplicates`（`[{techName, attribute, values}]`；
+  无重复的车辆不写该字段），`sync_preview_research.py` 在同步时打印告警。客户端一旦修正，
+  数据自动跟随。
 - **客户端 UI 事实（机制图标归属）**：`UI/Screens3/Lobby/Common/TankMechanics/TankMechanicsOverlay.yaml`
   给出 `eGameplayMechanics → *Icon` 的权威映射。物品 stem 与枚举拼写有两处不一致，已在
   `export_augment_icons.py` 的 `MECHANIC_ICON_ALIASES` 显式登记：`auxilliaryWeapons`
@@ -744,8 +753,8 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
 
 **当前 release（2026-11-13）**：默认 dataset `11.21.0` → `11.21.0-20261106-r2`，**738 辆**
 （含 `research/tech_tree/**`），**5965 件 / 4433.0 MB**，`content_digest sha256:9198d0ca…`；
-`current` 指向它。超测 dataset `11.4.0.138` → **`t11r3-20261113-r2`**（747 辆 /
-**6026 件 / 4482.5 MB**，`content_digest sha256:6e77f8d6…`），仅显式选择；同名 dataset
+`current` 指向它。超测 dataset `11.4.0.138` → **`t11r3-20261113-r3`**（747 辆 /
+**6026 件 / 4482.5 MB**，`content_digest sha256:634da494…`），仅显式选择；同名 dataset
 上一代 `t11r3-20261113-r1` 与上一轮超测 `t11p2-20261106-r9`（743 辆 / 6000 件 /
 4460.9 MB，dataset `11.4.0.130`）均保留回滚；首发 `t11p2-20261105` 因穿深缺陷
 （弹道迁移未适配，见 §2.7）被同日替换，历史各代均保留。

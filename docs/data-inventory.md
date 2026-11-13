@@ -138,7 +138,7 @@
   （738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）、
   `11.21.0_1`（SmartDLC 动态内容槽位命名，release `11.21.0_1-20261111-r1`，数据面与 11.21.0
   **逐字节一致**、同 content_digest——动态内容走客户端运行时通道，待 11.21.1 客户端数据充实）与
-  `11.4.0.138`（超测客户端自身版本号，label「超测服 11.4.0.138」，747 辆，release `t11r3-20261113-r2`，
+  `11.4.0.138`（超测客户端自身版本号，label「超测服 11.4.0.138」，747 辆，release `t11r3-20261113-r3`，
   **显式选择**；2026-11-11 由 id `supertest` 改名，旧 `?data=supertest` 链接随之失效）。
   dataset_id 字符集含 `_`（本日放宽；`?data=` 引入 `_` id 前须先部署放宽校验的 WotbTools
   前端 bundle）。`11.22` 通道待正式服包发布时加入
@@ -156,10 +156,11 @@
   [asset-store.md](asset-store.md)
 
 **当前包内布局**（本地实测；本地 11.21 包 **5965 个文件 / 4433.0 MB**；线上当前
-`t11r3-20261113-r2` 为 **747 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
+`t11r3-20261113-r3` 为 **747 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
 **6026 个文件 / 逻辑 4482.5 MB**（manifest 逐文件字节和口径；历史 4444.3 MB 为 du 块
 分配口径），manifest 0 mismatch；r2 相对 r1 仅 2 件（`data/tank_cache.json` 的逐弹
-`penetration_top`/`damage_top` + `data/data_version.json`）；r1 相对上一代超测 release
+`penetration_top`/`damage_top` + `data/data_version.json`）；r3 相对 r2 仅 2 件
+（`research/modules/japan.json` 的 `provenance.attributeDuplicates` + `research/meta.json`）；r1 相对上一代超测 release
 `t11p2-20261106-r9`（743 辆 / 6000 件）为 52 件变更（4 辆新车全套 + 数据/pb/research/
 科技树）+ 7 辆既有车 XML 的研发边重算（属性零变化 → 738 份基线 `tank/*.json` 与
 `game_data` 逐字节复用）。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
@@ -169,7 +170,7 @@
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
 （738 辆）计数；`map2d`/`cover` 行按 43 图 + index 计数（36 基础图 + 7 个变体，均有独立 2D/封面）。
 线上当前默认 release 为 `11.21.0-20261106-r2`（738 辆，5965 件 / 4433.0 MB，含
-`research/tech_tree/**`）；超测通道 `11.4.0.138`（原 `supertest`）为 747 辆（release `t11r3-20261113-r2`，manifest 6026 件 /
+`research/tech_tree/**`）；超测通道 `11.4.0.138`（原 `supertest`）为 747 辆（release `t11r3-20261113-r3`，manifest 6026 件 /
 4482.5 MB），仅显式选择；逐代增量见
 [game-data-sources.md](game-data-sources.md) §5.2 release 链）：
 
