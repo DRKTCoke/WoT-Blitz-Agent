@@ -266,6 +266,48 @@ def test_catalog_rejects_dataset_id_directory_mismatch():
             raise AssertionError("dataset_id 与目录名不一致必须 fail-closed")
 
 
+def _link_dataset_dir(link: pathlib.Path, target: str) -> None:
+    """建 dataset 链接。Windows 上 `../` 相对目标符号链不可遍历（WinError 123），
+    改用等价的绝对目标——catalog 侧语义不变：非单段目标走
+    "version.json 缺失 → 缺少 version.json / dataset_id 不一致" 同一批 fail-closed
+    分支；单段别名保持相对字面（sibling 形式判定依赖 readlink 原值）。"""
+    if os.name == "nt" and target.startswith(".."):
+        os.symlink(os.path.normpath(str(link.parent / target)), str(link),
+                   target_is_directory=True)
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_catalog_verifies_canonical_once_and_hides_sibling_aliases():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "datasets"
+        root.mkdir()
+        release = "t11r3-20261113-r6"
+        canonical = "11.4.0.138-r5"
+        pack = _write_pack(root.parent / "releases" / release, BASE_FILES)
+        _stamp(pack, canonical, label="超测服 11.4.0.138", release=release)
+        _link_dataset_dir(root / canonical, f"../releases/{release}")
+        for alias in ("11.4.0.130", "11.4.0.138"):
+            _link_dataset_dir(root / alias, canonical)
+            assert (root / alias / "map/x.webp").samefile(pack / "map/x.webp")
+        entries = ar.collect_datasets(root, full=True)
+        assert [(e["id"], e["label"], e["release"]) for e in entries] == [
+            (canonical, "超测服 11.4.0.138", release)]
+
+        for name, target in [("r2", "r2"), ("r2", "missing"), ("r2", "11.4.0.130"),
+                             ("r2", "BAD"), ("BAD", canonical), ("r2", f"../releases/{release}"),
+                             ("r2", "../releases/missing")]:
+            bad = root / name
+            _link_dataset_dir(bad, target)
+            try:
+                ar.collect_datasets(root, full=False)
+            except ar.ReleaseError:
+                pass
+            else:
+                raise AssertionError(f"invalid route accepted: {name} -> {target}")
+            bad.unlink()
+
+
 def test_delta_reports_added_modified_removed():
     with tempfile.TemporaryDirectory() as tmp:
         old = _write_pack(pathlib.Path(tmp) / "old", BASE_FILES)

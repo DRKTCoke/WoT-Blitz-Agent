@@ -35,6 +35,7 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import pack_incremental as P
+from tank_image_overrides import apply_covers, load_catalog, matches_dataset
 from data_version_handlers import (CoreHandler, MapsHandler, ResearchHandler,
                                    VehicleAssetsHandler, Context)
 from plan_data_version import NON_DATA_PLANES
@@ -61,6 +62,9 @@ def main() -> None:
     ap.add_argument("--map-index", default="map_index.json")
     ap.add_argument("--plan", required=True)
     ap.add_argument("--data-version-dir", default=None)
+    ap.add_argument("--dataset-id", help="WG 源 dataset ID；否则使用 plan 中的新版本/来源")
+    ap.add_argument("--raw-tank-images", type=pathlib.Path,
+                    help="WG 原始封面目录；缺省时按新 Data 重新导出覆盖目标")
     ap.add_argument("--agent-bin", default=None)
     ap.add_argument("--core-online", action="store_true",
                     help="让 update-data 下载/更新 pb；默认 offline，使用 base pb")
@@ -162,6 +166,38 @@ def main() -> None:
         source = base / "data/data_version.json"
     dv = json.loads(source.read_text(encoding="utf-8")) if source.is_file() else {}
     versions = plan.get("versions") or {}
+    catalog = load_catalog()
+    # An incremental plan may be based on a stamped custom pack. Re-read WG icons even if
+    # no tank-icons plane changed: an inherited render must not silently outlive its rule.
+    # The plan can inventory a local Data directory or the actual remote preview ZIP.
+    source_input = plan.get("new") or ""
+    preview_source = source_input if source_input.startswith(("https://", "http://")) else None
+    if dv_dir and source == dv_dir / "data_version.json":
+        preview_source = (dv.get("preview") or {}).get("source") or preview_source
+    eligible = matches_dataset(catalog, args.dataset_id, preview_source, versions.get("new"))
+    present = [tid for tid in catalog["vehicles"] if (out / "tank_images" / f"{tid}.webp").is_file()]
+    if present:
+        # Only special-case builds with a reviewed dataset or a base carrying our actual art.
+        # On ordinary updates the vehicle handler has already installed the original icons.
+        base_meta = base / "data/data_version.json"
+        base_dv = json.loads(base_meta.read_text(encoding="utf-8")) if base_meta.is_file() else {}
+        base_source = (base_dv.get("preview") or {}).get("source")
+        base_eligible = matches_dataset(catalog, None, base_source, versions.get("base"))
+        inherited = any(
+            (base / "tank_images" / f"{tid}.webp").is_file()
+            and P.sha256_file(base / "tank_images" / f"{tid}.webp") == catalog["vehicles"][tid]["sha256"]
+            for tid in present)
+        if eligible or base_eligible or inherited:
+            raw = args.raw_tank_images
+            if raw is None:
+                raw = work / "raw-tank-images"
+                command = [sys.executable, "-X", "utf8", "-I", str(TOOLS / "export_tank_icons.py"),
+                           "--game-data", str(ctx.game_data), "--pb", str(out / "data/tanks.pb"),
+                           "--out", str(raw), "--jobs", str(ctx.jobs)]
+                for tid in present:
+                    command.extend(["--tank", tid])
+                subprocess.run(command, cwd=ROOT, check=True)
+            ctx.report["handlers"]["tank-image-overrides"] = apply_covers(out, raw, eligible, catalog)
     dv.update({
         "base_game_version": versions.get("base"),
         "new_game_version": versions.get("new"),
