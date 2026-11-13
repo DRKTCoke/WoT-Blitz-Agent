@@ -266,6 +266,36 @@ def test_catalog_rejects_dataset_id_directory_mismatch():
             raise AssertionError("dataset_id 与目录名不一致必须 fail-closed")
 
 
+def test_catalog_verifies_canonical_once_and_hides_sibling_aliases():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "datasets"
+        root.mkdir()
+        release = "t11r3-20261113-r6"
+        canonical = "11.4.0.138-r5"
+        pack = _write_pack(root.parent / "releases" / release, BASE_FILES)
+        _stamp(pack, canonical, label="超测服 11.4.0.138", release=release)
+        (root / canonical).symlink_to(f"../releases/{release}", target_is_directory=True)
+        for alias in ("11.4.0.130", "11.4.0.138"):
+            (root / alias).symlink_to(canonical, target_is_directory=True)
+            assert (root / alias / "map/x.webp").samefile(pack / "map/x.webp")
+        entries = ar.collect_datasets(root, full=True)
+        assert [(e["id"], e["label"], e["release"]) for e in entries] == [
+            (canonical, "超测服 11.4.0.138", release)]
+
+        for name, target in [("r2", "r2"), ("r2", "missing"), ("r2", "11.4.0.130"),
+                             ("r2", "BAD"), ("BAD", canonical), ("r2", f"../releases/{release}"),
+                             ("r2", "../releases/missing")]:
+            bad = root / name
+            bad.symlink_to(target, target_is_directory=True)
+            try:
+                ar.collect_datasets(root, full=False)
+            except ar.ReleaseError:
+                pass
+            else:
+                raise AssertionError(f"invalid route accepted: {name} -> {target}")
+            bad.unlink()
+
+
 def test_delta_reports_added_modified_removed():
     with tempfile.TemporaryDirectory() as tmp:
         old = _write_pack(pathlib.Path(tmp) / "old", BASE_FILES)

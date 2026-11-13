@@ -312,8 +312,22 @@ def collect_datasets(root: Path, *, full: bool) -> list[dict]:
     if not root.is_dir():
         raise ReleaseError(f"datasets 根目录不存在: {root}")
     datasets: list[dict] = []
+    aliases = {}
     for child in sorted(root.iterdir(), key=lambda p: p.name):
-        if child.name.startswith(".") or not child.is_dir():
+        if child.name.startswith("."):
+            continue
+        if child.is_symlink():
+            # Only the literal sibling form denotes a retired public route. A normal
+            # ../releases/<release> link must still match its stamped dataset ID.
+            target = os.readlink(child)
+            if target == Path(target).name:
+                validate_dataset_id(child.name)
+                validate_dataset_id(target)
+                aliases[child.name] = target
+                continue
+            if not (child / "version.json").is_file():
+                raise ReleaseError(f"dataset 链接缺少 version.json: {child} -> {target}")
+        if not child.is_dir():
             continue
         if not (child / "version.json").is_file():
             continue
@@ -338,6 +352,10 @@ def collect_datasets(root: Path, *, full: bool) -> list[dict]:
                 "notes": version.get("notes") or "",
             }
         )
+    canonical_ids = {item["id"] for item in datasets}
+    for alias, target in aliases.items():
+        if target not in canonical_ids:
+            raise ReleaseError(f"dataset 别名 {alias!r} 必须直接指向已验证的 dataset: {target!r}")
     if not datasets:
         raise ReleaseError(f"{root} 下没有任何含 version.json 的 dataset")
 
