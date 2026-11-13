@@ -37,6 +37,7 @@ sys.path.insert(0, str(TOOLS))
 import pack_incremental as P
 from data_version_handlers import (CoreHandler, MapsHandler, ResearchHandler,
                                    VehicleAssetsHandler, Context)
+from plan_data_version import NON_DATA_PLANES
 HANDLERS = (ResearchHandler(), VehicleAssetsHandler(), CoreHandler(), MapsHandler())
 
 
@@ -63,6 +64,10 @@ def main() -> None:
     ap.add_argument("--agent-bin", default=None)
     ap.add_argument("--core-online", action="store_true",
                     help="让 update-data 下载/更新 pb；默认 offline，使用 base pb")
+    ap.add_argument("--pb-dir", default=None,
+                    help="预构建 pb 目录（tanks.pb+models.pb，含新车 roster）：core 物化 "
+                         "work/data 后先覆盖再跑 update-data --offline；vehicle-assets 逐车"
+                         "导出也读它（新车不在 base pb）。models.pb 变化须同批 --gun-mask-slices")
     ap.add_argument("--gun-mask-slices", default=None,
                     help="models.pb 变化时提供同批 gun_mask_slices.json")
     ap.add_argument("--render-dir", default="release/overhead-bake",
@@ -92,7 +97,7 @@ def main() -> None:
         raise SystemExit(f"plan 有未解析 tank/map：{plan.get('unresolvedTanks')[:5]} "
                          f"{plan.get('unresolvedMaps')[:5]}")
     known = set().union(*(h.planes for h in HANDLERS))
-    unknown = active - known - {"ui", "version"}
+    unknown = active - known - NON_DATA_PLANES
     if unknown:
         raise SystemExit(f"没有 handler 的数据面: {sorted(unknown)}")
 
@@ -119,6 +124,8 @@ def main() -> None:
                       render_dir=pathlib.Path(args.render_dir).resolve(),
                       gun_mask=pathlib.Path(args.gun_mask_slices).resolve()
                       if args.gun_mask_slices else None,
+                      pb_dir=pathlib.Path(args.pb_dir).resolve()
+                      if args.pb_dir else None,
                       jobs=max(1, args.jobs))
     else:
         ctx = Context(base=base, out=out, game_data=pathlib.Path(args.game_data).resolve(),
@@ -128,6 +135,8 @@ def main() -> None:
                       render_dir=pathlib.Path(args.render_dir).resolve(),
                       gun_mask=pathlib.Path(args.gun_mask_slices).resolve()
                       if args.gun_mask_slices else None,
+                      pb_dir=pathlib.Path(args.pb_dir).resolve()
+                      if args.pb_dir else None,
                       jobs=max(1, args.jobs), dry_run=True)
 
     for handler in HANDLERS:

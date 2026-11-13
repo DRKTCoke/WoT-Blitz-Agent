@@ -85,7 +85,7 @@
 | 数据版本差异计划 / pack 复用 | `tools/plan_data_version.py` v2（全量源清单：目录 sha256、ZIP CRC32+size；plane 分类；tank_id/map space 解析；`wholeTable`/pins；`--strict` fail-closed）+ `tools/apply_data_version.py`（`pack_incremental` 硬链接克隆/同哈希复用/断链覆盖/孤儿删除；`data_version_handlers` 注册表：research、vehicle-assets 逐车 GLB/悬挂/履带/图标、core 整表重算只覆盖变化字节、maps 按 space 重导 + 2D/变体整表） | `change_plan.json` / `<out>.apply.json`；`data_version.json` 追加 `base_game_version`/`new_game_version`/`source_plan_sha256`/`changed_planes`/`coverage`/`scope`/`inputs` | ✅ 差异驱动；车辆资产逐项、core 整表但只覆盖变化字节、地图 2D/变体整表（用户选定） |
 | 解包底座（DVPL/DAVA 容器、DLC `packs/` 覆盖层） | 本机自产代码（Rust `dvpl.rs` + Python `tools/wotbtools/`，fail-closed 两端对齐） | 不适用 | ✅ 100/100 | 本地链硬前提：需本机装客户端（`Data/` + `packs/`），游戏版本更新后整链重跑 |
 | 11.22 tier XI 预览包（`release/asset_pack_t11r3_r2/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.138_t11r3.zip`（`11.22_supertest_tier11_6`）的 9 辆 XI 车 + 现役 11.21 包（前代源 `..._130_t11p2.zip` / `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11r3-20261113-r2`，dataset **`11.4.0.138`**/超测服，显式通道；r2 相对 r1 仅 2 个文件——逐弹 `penetration_top`/`damage_top`（点满强化树口径）；r1 为首发全量重建） | **747 辆（738+9）**：既有 5 辆（BZ-79 15153 / Object 432U 27905 / KR-1 28161 / Black Rock 30241 / XM69 Hacker 30497）+ t11r3 新实装 4 辆（`J77_Ho_Ri_4` 10593、`F135_AS_XX_40_t` 23361、`G187_Taschenratte` 30737、`G189_Hirschkafer` 30993）；manifest **6026 件 / 4482.5 MB**；科技树 **312 节点 / 0 pending / 318 边**；弹种表 **2111**（+12）；consumables/provisions **67/91**（common 16/40）；4 个新机制 `vehicleAbilities` = `unguidedRocket` / `externalAmmoModule` / `auxilliaryWeapons` / `shellOverheat`；7 辆既有车 XML 的 `<unlocks>` 研发边重算（属性零变化 → 738 份基线 tank JSON 逐字节不变）；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
-| 11.21.0_1 动态内容槽位包（origin `datasets/11.21.0_1` → `11.21.0_1-20261111-r1`，**已上线**） | 客户端 SmartDLC `s11.21.0_1.yaml`（2026-11-10 发布：dc `7405732/3/4` 贴图 + 活动/offer 文案 + 收藏车 Relic 注册文案） | 不适用 | ✅ 已上线（origin release `11.21.0_1-20261111-r1` 由 11.21.0 release `cp -al` 克隆 + 主机侧 stamp，delta 0 变更，公网回读一致；数据面 = 11.21.0-20261106-r2 的硬链接克隆，**逐字节一致**、同 content_digest `sha256:9198d0ca…`，5965 件 / 738 辆——动态内容本身走客户端运行时通道，不进包；待 11.21.1 客户端数据后充实） | 占位登记：版本选择器显式暴露 11.21 内部微更新槽位；与 11.21.0 的唯一差异是 version.json 身份；见 [index.md](index.md) 2026-11-11 条目 |
+| 11.21.0_1 SmartDLC 槽位包（origin `datasets/11.21.0_1` → `11.21.0_1-20261114-r1`，**已上线**） | 客户端 SmartDLC `s11.21.0_1.yaml`（2026-11-10 发布：dc `7405732/3/4`）的解包层 `%LOCALAPPDATA%/wotblitz/packs/`（474 件，登录同步后固化快照；dvpm 实际含完整车辆数据 XML，见 [game-data-sources.md](game-data-sources.md) §2.2 packs 段） | 不适用 | ✅ 已上线（r1 占位克隆 → **r1 充实**：11.21.0 基线 + **Relic D3（25201，9 级 AT-SPG 收藏车，107mm 弹鼓泵动炮）** = **739 辆 / 5972 件**，`content_digest sha256:4944aea4…`；apply 变化面 = added 7（25201 全套逐车件）+ changed 10（pb/cache 整表重写件、shellKinds 新全局弹种 136058/136314/136570、crops、It115 模型重导、research 2）+ removed 0，738 基线逐字节复用） | It115_Rinoceronte(17793) 基础模型随 DLC 皮肤更新重导（suspension/tread 不变保留）；26 图场景替换**显式延期**（maps-deferred：场景引用本 DLC 新增的 `00_shared_content` 布局，定性待 11.21.1 全链重导，包内地图保持 11.21.0 烘焙）；车辆数值与 BlitzKit 主站 pb 逐字段交叉一致（仅炮塔 bbox z 属已知部件盒类别）；r1（`11.21.0_1-20261111-r1`，占位克隆）保留回滚；见 [index.md](index.md) 2026-11-14 条目 |
 
 引擎产物（WASM Release，`wotb-replay-wasm-*.zip`）构建自 `crates/replay-core|wasm`，**不含
 任何 pb**；上表三张注入表（车型名 / 俯仰锚定 / 弹种表）是消费方的间接数据面——它们的
@@ -134,10 +134,10 @@
   manifest 的 path→sha256 与语义化 `data_version` 决定（排除 `generated`、`upstream_commit`、
   `worktree_dirty` 与重新提取的时间戳），同内容重建不漂移。`manifest.json` /
   `version.json` / `delta.json` / `overhead/` 是发布元数据/中间件，不进入内容清单。
-  当前生产登记的三个 dataset（2026-11-11 命名对齐客户端，origin 已同日发布并回读 0 mismatch）：`11.21.0`
+  当前生产登记的三个 dataset（2026-11-11 命名对齐客户端；`11.21.0_1` 于 2026-11-14 充实发布）：`11.21.0`
   （738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）、
-  `11.21.0_1`（SmartDLC 动态内容槽位命名，release `11.21.0_1-20261111-r1`，数据面与 11.21.0
-  **逐字节一致**、同 content_digest——动态内容走客户端运行时通道，待 11.21.1 客户端数据充实）与
+  `11.21.0_1`（SmartDLC 槽位，release `11.21.0_1-20261114-r1`，**739 辆 / 5972 件** =
+  11.21.0 基线 + Relic D3；26 图场景替换延期，地图平面与 11.21.0 同烘焙）与
   `11.4.0.138`（超测客户端自身版本号，label「超测服 11.4.0.138」，747 辆，release `t11r3-20261113-r3`，
   **显式选择**；2026-11-11 由 id `supertest` 改名，旧 `?data=supertest` 链接随之失效）。
   dataset_id 字符集含 `_`（本日放宽；`?data=` 引入 `_` id 前须先部署放宽校验的 WotbTools

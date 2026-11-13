@@ -168,6 +168,14 @@ def reverse_pack_to_data(pack: pathlib.Path, work: pathlib.Path) -> dict[str, in
         if src.is_file():
             shutil.copy2(src, dst)
             counts["copied"] += 1
+    # tank_cache 重建的旁路输入（tank_resolver 的 *_top 字段源，t11r3 起）：
+    # 缺失时 Rust 侧静默空表 → 重建的 tank_cache 丢 *_top 字段（§5.1 混合版本陷阱）。
+    # base 无 XI 车时本就不存在，复制是条件性的。
+    for name in ("upgrade_top_hp.json", "upgrade_top_shells.json"):
+        src = pack / "data" / name
+        if src.is_file():
+            shutil.copy2(src, data / name)
+            counts["copied"] += 1
     # game_data 会被 update-data --force 写；复制（743 个小 JSON）。
     if (pack / "game_data").is_dir():
         copy_writable_tree(pack / "game_data", data / "game_data")
