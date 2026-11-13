@@ -46,6 +46,19 @@ PLANES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
       "research/modules/", "research/tech_tree/")),
     ("vehicle-params", re.compile(r"^3d/Tanks/Parameters/([^/]+)/([^/]+)\.yaml\.dvpl$"),
      ("game_data/", "glb/", "suspension/", "tread/")),
+    # 车辆贴图（基础 + 皮肤变体）：GLB 导出的 images/ images_pbr/ 命名约定源。
+    # 文件名不逐一对应车辆 stem，不做 per-tank 解析；glb/ 覆盖由 vehicle-model 驱动。
+    ("vehicle-textures", re.compile(r"^3d/Tanks/([A-Za-z]+)/(?:images|images_pbr)/.+$"),
+     ("glb/",)),
+    # 客户端皮肤/涂装资源（Customization 皮肤网格与贴图、Animations 皮肤动画、
+    # Camouflages 涂装图集、各国 CamouflageMasks 伪装投影贴图）——不进资产包：
+    # 包内 GLB 只导基础模型，皮肤注册文案走 research/camouflage（common/camouflages.xml）。
+    ("vehicle-skins", re.compile(
+        r"^3d/Tanks/(?:Customization|Animations|Camouflages|[A-Za-z]+/CamouflageMasks)/.+$"),
+     ()),
+    # 碰撞体按 `<nation>-<stem>` 命名（与通用 vehicle-model 的 `<Dir>/<stem>` 不同形）。
+    ("vehicle-model", re.compile(r"^3d/Tanks/CollisionMeshes/([a-z]+)-(.+?)\.sc[2g](?:\.dvpl)?$"),
+     ("glb/", "tank_images/")),
     ("vehicle-model", re.compile(
         r"^3d/Tanks/(?!Parameters/)([^/]+)/([^/]+?)\.(?:sc2|scg)(?:\.dvpl)?$"),
      ("glb/", "tank_images/")),
@@ -58,6 +71,9 @@ PLANES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
     ("tank-icons", re.compile(
         r"^Gfx/UI/(?:BigTankIcons|BattleScreenHUD/SmallTankIcons)/([^/]+?)(?:\.packed)?\.webp\.dvpl$"),
      ("tank_images/",)),
+    # 客户端共享内容与车库空间（00_shared_content、hangar_*）：非对战地图，不进资产包。
+    # 必须排在 maps 之前（classify 首匹配优先）。
+    ("map-client", re.compile(r"^3d/Maps/(?:00_shared_content|hangar_[^/]+)/.+$"), ()),
     ("maps", re.compile(r"^(?:maps/([^/]+)(?:/|$)|3d/Maps/([^/]+)/)"),
      ("map/", "map2d/", "cover/")),
     ("map-registry", re.compile(r"^maps\.yaml\.dvpl$"),
@@ -65,10 +81,19 @@ PLANES: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
     ("version", re.compile(r"^version\.txt\.dvpl$"),
      ("data/data_version.json",)),
     ("ui", re.compile(r"^(?:Gfx/|UI/|Audio/|Shaders/|Fonts/|HtmlDocuments/|Cinema/|"
-                      r"Videos/|Sounds/|Packs/|DAVAProject/)"),
+                      r"Videos/|Sounds/|WwiseSound/|Packs/|DAVAProject/)"),
+     ()),
+    # 客户端特效/车库预设（FX sc2、hangar presets）、3D 皮肤注册表与 SmartDLC 容器
+    # 自身簿记件；Data 根配置覆盖层（camouflages/sounds/hangarBaseParams——涂装注册
+    # 权威是 common/camouflages.xml，已在 shared-xml；这几份无包内消费方）。
+    ("client-fx", re.compile(r"^3d/(?:FX|Configs)/.+$"), ()),
+    ("client-config", re.compile(
+        r"^(?:3d/Customization|camouflages|sounds|hangarBaseParamsPrecomputedData_generated)"
+        r"\.yaml\.dvpl$|^dvpl_file_info_cache\.txt$|^local_copy_server_.+$"),
      ()),
 ]
-NON_DATA_PLANES = {"ui", "version"}
+NON_DATA_PLANES = {"ui", "version", "vehicle-skins", "map-client", "client-fx",
+                   "client-config", "maps-deferred"}
 # 会影响整表 pb/cache（无法按车安全拆成独立文件）的数据面。
 CORE_PLANES = {"vehicle-roster", "vehicle-components", "vehicle-xml", "vehicle-params",
                "vehicle-model", "shared-xml"}
@@ -233,6 +258,9 @@ def main() -> None:
     ap.add_argument("--tank-bridge", default="data/tank_id_bridge.json")
     ap.add_argument("--preview-bridge", default="data/preview_tank_id_bridge.json")
     ap.add_argument("--map-index", default="map_index.json")
+    ap.add_argument("--defer-maps", action="store_true",
+                    help="把已解析到对战图空间的变化移入 maps-deferred（本轮不重导地图，"
+                         "显式延期并登记；场景替换的定性留待客户端全量包时按 §5.1b 全链重导）")
     ap.add_argument("--strict", action="store_true",
                     help="unmapped/unresolved/missing-output/orphan-output 非零退出")
     args = ap.parse_args()
@@ -248,6 +276,7 @@ def main() -> None:
     if preview_path.is_file():
         bridges.append(args.preview_bridge)
     by_pair, by_stem, bridge_problems = load_bridge(bridges)
+    nations = {n for n, _ in by_pair}
     by_space, by_key, map_problems = load_map_registry(args.map_index)
     planes: dict[str, dict] = {}
     unmapped: list[str] = []
@@ -267,6 +296,17 @@ def main() -> None:
             if plane == "unmapped":
                 unmapped.append(rel)
             if "stem" in detail:
+                stem = detail["stem"]
+                if plane == "tank-icons":
+                    # 图标 stem 是 `<nation>-<stem>` 形（other-Oth99_Relic），皮肤变体带
+                    # `_skin<digit>` 后缀、@2x 是同图标的高清变体——切国家前缀、剥皮肤
+                    # 后缀与 @2x，才能落到 base 车的 tank-icons kind。
+                    m = re.match(r"([a-z]+)-(.+)", stem)
+                    if m and m.group(1) in nations:
+                        stem = m.group(2)
+                    stem = re.sub(r"@2x$", "", stem)
+                    stem = re.sub(r"_skin\d*$", "", stem)
+                    detail["stem"] = stem
                 bucket = vehicle_stems.setdefault(detail["stem"], {"nation": detail.get("nation"),
                                                                    "added": [], "changed": [],
                                                                    "removed": []})
@@ -309,6 +349,27 @@ def main() -> None:
 
     core_active = sorted(set(planes) & CORE_PLANES & {
         p for p, d in planes.items() if d["added"] or d["changed"] or d["removed"]})
+    # 显式延期：已解析到对战图空间的变化移入 maps-deferred（非数据面容忍桶）。
+    # 场景文件的原始基线可能已被客户端原地覆盖（SmartDLC 会写 Data 本体），
+    # 延期定性必须连同 limitation 一起记录，不得静默。
+    deferred_maps = 0
+    maps_src = planes.get("maps", {})
+    maps_touched = any(maps_src.get(k) for k in ("added", "changed", "removed"))
+    if args.defer_maps and maps_touched:
+        target = planes.setdefault("maps-deferred", {
+            "added": [], "changed": [], "removed": [], "outputPrefixes": ()})
+        for kind in ("added", "changed", "removed"):
+            moved = maps_src[kind]
+            target[kind].extend(moved)
+            deferred_maps += len(moved)
+            maps_src[kind] = []
+        # 同步 maps → maps-deferred 的空间级记录。
+        if maps:
+            target.setdefault("spaces", {}).update(maps)
+            maps.clear()
+        map_problems.append(
+            f"maps-deferred: {deferred_maps} 个对战图场景文件延期重导（--defer-maps）；"
+            f"包内地图保持上一版本烘焙")
     whole_table = list(WHOLE_TABLE) if core_active else []
     map_registry_changed = bool(planes.get("map-registry", {}).get("added")
                                or planes.get("map-registry", {}).get("changed")

@@ -80,20 +80,22 @@ def test_missing_everywhere_returns_data_path():
 
 
 def test_real_client_packs_if_present():
-    """真实客户端抽查：packs 存在时，被覆盖的坦克模型必须解析到 packs。"""
+    """真实客户端抽查：packs 存在时，任取其中实际存在的文件都必须解析到 packs。
+
+    不写死具体文件（packs 随 DLC 槽位轮换：2026-10-08 是 Ferdinand 皮肤 45 件，
+    2026-11-13 是 11.21.0_1 的 474 件——写死路径会随登录轮换假阴性）。
+    """
     packs = dlc_packs.packs_dir()
     if packs is None:
         print("  （跳过：本机无 %LOCALAPPDATA%/wotblitz/packs）")
         return
-    data = pathlib.Path(
-        r"D:/SteamLibrary/steamapps/common/World of Tanks Blitz/Data")
-    if not data.is_dir():
-        print("  （跳过：本机无 Steam Data 目录）")
+    sample = next((p for p in sorted(packs.rglob("*.dvpl")) if p.is_file()), None)
+    if sample is None:
+        print("  （跳过：packs 目录为空）")
         return
-    rel = "3d/Tanks/German/Ferdinand.scg.dvpl"
-    p = dlc_packs.client_path(data, rel)
-    assert "packs" in str(p).lower(), f"被 DLC 覆盖的模型应解析到 packs，实际 {p}"
-    assert p.stat().st_size != (data / rel).stat().st_size, "packs 与 Data 应确为不同版本"
+    rel = sample.relative_to(packs).as_posix()
+    p = dlc_packs.client_path(pathlib.Path("Z:/definitely/not/the/game/Data"), rel)
+    assert "packs" in str(p).lower(), f"packs 实存文件应解析到 packs，实际 {p}"
 
 
 if __name__ == "__main__":

@@ -21,8 +21,9 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import pack_incremental as P
-from plan_data_version import CORE_PLANES
-ASSET_PLANES = {"vehicle-xml", "vehicle-params", "vehicle-model", "tank-icons"}
+from plan_data_version import CORE_PLANES, NON_DATA_PLANES
+ASSET_PLANES = {"vehicle-xml", "vehicle-params", "vehicle-model", "vehicle-textures",
+                "tank-icons"}
 RESEARCH_PLANES = {"vehicle-xml", "vehicle-roster", "shared-xml", "techtree", "strings"}
 
 
@@ -41,6 +42,10 @@ class Context:
     dry_run: bool = False
     core_online: bool = False
     jobs: int = 1
+    # 预构建 pb 目录（tanks.pb + models.pb，739 辆等）：core 物化 work/data 后先覆盖，
+    # update-data --offline 的 roster 即含新车；vehicle-assets 逐车导出也读它（新车不在
+    # base pb 里）。默认 None = 沿用 base pb（原行为，纯数值更新不受影响）。
+    pb_dir: pathlib.Path | None = None
     report: dict = field(default_factory=lambda: {"handlers": {}})
 
     @property
@@ -145,7 +150,7 @@ class VehicleAssetsHandler:
         icon_ids = [t for t in ids
                     if "tank-icons" in (ctx.plan["tanks"].get(str(t), {}).get("kinds") or [])]
 
-        base_pb = ctx.base / "data/tanks.pb"
+        base_pb = ctx.pb_dir / "tanks.pb" if ctx.pb_dir else ctx.base / "data/tanks.pb"
         if model_ids:
             cmd = [sys.executable, "-I", str(TOOLS / "export_tank_glb.py"),
                    "--game-data", str(ctx.game_data), "--pb", str(base_pb),
@@ -192,20 +197,23 @@ class VehicleAssetsHandler:
                 if (ctx.out / "glb" / str(tid)).exists() and "vehicle-model" in (
                         ctx.plan["tanks"].get(str(tid), {}).get("kinds") or []):
                     raise SystemExit(f"缺少模型导出: {src}")
-            for family, rel in (("suspension", f"suspension/{tid}.json"),
-                                ("tread", f"tread/{tid}.json")):
-                src_file = work / family / f"{tid}.json"
-                if src_file.is_file():
-                    action = P.overlay_file(ctx.out, rel, src_file)
-                    report[action] = report.get(action, 0) + 1
-                else:
-                    if P.delete_path(ctx.out, rel):
-                        report["deleted"] += 1
+            # suspension/tread 生命周期跟 vehicle-params（model-only 变化不重导也不删，
+            # 基线文件仍然有效——It115 换模型不动悬挂数据的实例）。
+            if tid in param_ids:
+                for family, rel in (("suspension", f"suspension/{tid}.json"),
+                                    ("tread", f"tread/{tid}.json")):
+                    src_file = work / family / f"{tid}.json"
+                    if src_file.is_file():
+                        action = P.overlay_file(ctx.out, rel, src_file)
+                        report[action] = report.get(action, 0) + 1
+                    else:
+                        if P.delete_path(ctx.out, rel):
+                            report["deleted"] += 1
             icon = icons / f"{tid}.webp"
             if icon.is_file():
                 action = P.overlay_file(ctx.out, f"tank_images/{tid}.webp", icon)
                 report[action] = report.get(action, 0) + 1
-            elif P.delete_path(ctx.out, f"tank_images/{tid}.webp"):
+            elif tid in icon_ids and P.delete_path(ctx.out, f"tank_images/{tid}.webp"):
                 report["deleted"] += 1
         # 全量纹理表：tread 导出器总是重写；按哈希覆盖。
         tex = work / "tread_textures"
@@ -232,6 +240,20 @@ class VehicleAssetsHandler:
         ctx.report["_model_stage"]["ids"] = model_ids
 
 
+def seed_pb_dir(pb_dir: pathlib.Path, data: pathlib.Path) -> None:
+    """把预构建 pb（tanks.pb + models.pb）复制进已物化的 work/data。
+
+    必须在 reverse_pack_to_data 之后、update-data 之前调用：work/data 的两份 pb
+    是 base pack 的**复制件**（见 reverse_pack_to_data 的"下游会写"清单），直接
+    覆盖不会写穿 base；roster 由此含新车，models.pb 由此带上新车装甲模型条目。
+    """
+    for name in ("tanks.pb", "models.pb"):
+        src = pb_dir / name
+        if not src.is_file():
+            raise SystemExit(f"--pb-dir 缺 {src}")
+        (data / name).write_bytes(src.read_bytes())
+
+
 class CoreHandler:
     name = "core"
     planes = CORE_PLANES
@@ -250,8 +272,10 @@ class CoreHandler:
             return
         if not ctx.dry_run and not ctx.agent_bin.is_file():
             raise SystemExit(f"缺少 agent 二进制 {ctx.agent_bin}；先 cargo build --release --bin wotb-agent")
-        if not ctx.core_online and (ctx.active & {"vehicle-roster", "vehicle-components"}):
-            raise SystemExit("roster/components 变化需要重建 pb；请准备新 pb 或加 --core-online")
+        if not ctx.core_online and not ctx.pb_dir and \
+                (ctx.active & {"vehicle-roster", "vehicle-components"}):
+            raise SystemExit("roster/components 变化需要重建 pb；请准备新 pb（--pb-dir）"
+                             "或加 --core-online")
         removed = _tank_ids(ctx.plan, {"vehicle-xml", "vehicle-params", "vehicle-model"},
                             removed_only=True)
         if removed and not ctx.core_online:
@@ -260,6 +284,10 @@ class CoreHandler:
         data = work / "data"
         if not ctx.dry_run:
             P.reverse_pack_to_data(ctx.base, work)
+            # 预构建 pb（新车场景）：先于 update-data 覆盖 work/data，roster 即含新车；
+            # models.pb 一并预置——core 本身不重编 models.pb，新车装甲模型条目只能从这里进。
+            if ctx.pb_dir is not None:
+                seed_pb_dir(ctx.pb_dir, data)
             # vehicle handler 产出的新 GLB 必须在 dump-tank-data 前进入 work cache。
             stage = (ctx.report.get("_model_stage") or {})
             models = pathlib.Path(stage.get("models", "")) if stage.get("models") else None
@@ -267,14 +295,16 @@ class CoreHandler:
                 src = models / str(tid) if models else None
                 if src and src.is_dir():
                     P.sync_tree(data / "cache/models", str(tid), src)
-            # 新坦克/组件变化需要 pb 先更新；offline 且 base pb 缺 id 时 fail-closed。
+            # 新坦克/组件变化需要 pb 先更新；offline 且 base pb 缺 id 时 fail-closed
+            #（--pb-dir 预置的新 pb 已含新车，豁免——update-data 对缺 XML 的 roster 条目
+            # 仍会自行报错，不静默）。
             base_ids = self._base_ids(ctx)
             changed_ids = {int(t) for t in (ctx.plan.get("tanks") or {})}
             missing = sorted(changed_ids - base_ids)
-            if missing and not ctx.core_online:
+            if missing and not ctx.core_online and ctx.pb_dir is None:
                 raise SystemExit(
-                    f"base pb 缺 tank id {missing[:10]}；先准备新 pb（--core-online 或更新 "
-                    f"data/tanks.pb），否则 update-data 无法提取这些车")
+                    f"base pb 缺 tank id {missing[:10]}；先准备新 pb（--pb-dir / --core-online"
+                    f"），否则 update-data 无法提取这些车")
         cmd = [str(ctx.agent_bin), "update-data", "--game-dir", str(ctx.game_data),
                "--output", "data/tanks.pb", "--tank-cache", "data/tank_cache.json",
                "--game-data", "data/game_data", "--force"]
@@ -299,15 +329,16 @@ class CoreHandler:
             if src.is_file():
                 action = P.overlay_file(ctx.out, rel, src)
                 report[action] = report.get(action, 0) + 1
-        # gun mask 必须与 models.pb 同批；pb 未变时安全复用 base 文件。
+        # gun mask 必须与 models.pb 同批；判定以 models.pb 是否变化为准（out 的克隆
+        # 与 base 恒等，"比 base vs out" 恒真会吞掉 --gun-mask-slices——2026-11-13 重排）。
         gm = ctx.base / "data/gunMaskSlices.json"
-        if P.same_bytes(gm, ctx.out / "data/gunMaskSlices.json"):
+        models_changed = (P.sha256_file(data / "models.pb")
+                          != P.sha256_file(ctx.base / "data/models.pb"))
+        if not models_changed:
+            # models.pb 未变：out 的克隆即同版 gunMask。
             report["reused"] += 1
         elif ctx.gun_mask and ctx.gun_mask.is_file():
             action = P.overlay_file(ctx.out, "data/gunMaskSlices.json", ctx.gun_mask)
-            report[action] = report.get(action, 0) + 1
-        elif gm.is_file() and P.sha256_file(data / "models.pb") == P.sha256_file(ctx.base / "data/models.pb"):
-            action = P.overlay_file(ctx.out, "data/gunMaskSlices.json", gm)
             report[action] = report.get(action, 0) + 1
         else:
             raise SystemExit("models.pb 变化但未提供 gunMaskSlices；先跑 tools/emit_vehicle_pb.py "

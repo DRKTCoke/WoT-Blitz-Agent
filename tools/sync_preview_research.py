@@ -224,10 +224,13 @@ def sync_params(out: pathlib.Path, game_data: pathlib.Path) -> dict:
     added_params = [key for key in fmt if key not in params]
     for key in added_params:
         params[key] = fmt[key]
-    for doc in (sd, fd):
-        doc.setdefault("meta", {})["previewGameVersion"] = version
-    sp.write_text(json.dumps(sd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    fp.write_text(json.dumps(fd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # previewGameVersion 只在真有增量时写——零增量的注记会造成"内容相同、
+    # 字节不同"的假阳性（11.21.0_1 实例：基线 params 与客户端完全一致）。
+    if added_sections or added_params:
+        for doc in (sd, fd):
+            doc.setdefault("meta", {})["previewGameVersion"] = version
+        sp.write_text(json.dumps(sd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        fp.write_text(json.dumps(fd, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     meta_path = out / "meta.json"
     if meta_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -264,7 +267,14 @@ def tank_refs(modules: dict) -> dict[int, dict]:
     return refs
 
 
-def validate(out: pathlib.Path) -> dict:
+def validate(out: pathlib.Path, bridge_ids: set[int] | None = None,
+             baseline_counts: dict | None = None) -> dict:
+    """同步结果校验。t11 专属断言（upgradeProgression/abilities/312 节点 census/
+    modulesDumpSection/42 耐久参数）仅当 bridge 含 t11 登记位时启用——其余 preview
+    场景（如 11.21.0_1 的单车 Relic bridge）走通用校验 + 基线 census 派生期望。"""
+    bridge_ids = bridge_ids or set()
+    baseline_counts = baseline_counts or {}
+    t11_ids = sorted(set(PREVIEW_TANKS) & bridge_ids)
     modules_dir = out / "modules"
     modules_by_tank: dict[int, dict] = {}
     module_nations: dict[str, dict] = {}
@@ -277,20 +287,25 @@ def validate(out: pathlib.Path) -> dict:
             tank["nation"] = path.stem
             modules_by_tank[int(tank["tankId"])] = tank
 
-    sidecar_path = out.parent / "upgrade_top_hp.json"
-    if not sidecar_path.is_file():
-        raise SystemExit(f"缺少顶级 HP 旁路表: {sidecar_path}")
-    sidecar = {int(k): int(v) for k, v in
-               json.loads(sidecar_path.read_text(encoding="utf-8"))["tanks"].items()}
-    shells_path = out.parent / "upgrade_top_shells.json"
-    if not shells_path.is_file():
-        raise SystemExit(f"缺少顶级弹槽加成旁路表: {shells_path}")
-    shell_sidecar = {int(k): v for k, v in
-                     json.loads(shells_path.read_text(encoding="utf-8"))["tanks"].items()}
+    # 旁路表只在 bridge 含强化树车（t11 XI）时存在且必查；收藏车 bridge
+    #（如 11.21.0_1 的 Relic）无 upgradeProgression，导出器不产出，属正常形态。
+    if t11_ids:
+        sidecar_path = out.parent / "upgrade_top_hp.json"
+        if not sidecar_path.is_file():
+            raise SystemExit(f"缺少顶级 HP 旁路表: {sidecar_path}")
+        sidecar = {int(k): int(v) for k, v in
+                   json.loads(sidecar_path.read_text(encoding="utf-8"))["tanks"].items()}
+        shells_path = out.parent / "upgrade_top_shells.json"
+        if not shells_path.is_file():
+            raise SystemExit(f"缺少顶级弹槽加成旁路表: {shells_path}")
+        shell_sidecar = {int(k): v for k, v in
+                         json.loads(shells_path.read_text(encoding="utf-8"))["tanks"].items()}
+    else:
+        sidecar, shell_sidecar = {}, {}
 
     problems: list[str] = []
     expected_hp: dict[int, int] = {}
-    for tid in PREVIEW_TANKS:
+    for tid in t11_ids:
         tank = modules_by_tank.get(tid)
         if tank is None:
             problems.append(f"modules 缺预览车 {tid}")
@@ -331,15 +346,18 @@ def validate(out: pathlib.Path) -> dict:
     for kind in ("consumables", "provisions"):
         payload = json.loads((out / f"{kind}.json").read_text(encoding="utf-8"))
         catalogs[kind] = payload["items"]
-        for item in payload["items"]:
-            for rule in (item.get("filter") or {}).get("include") or []:
-                tiers = rule.get("tiers")
-                if tiers and tiers.get("max") == 10:
-                    problems.append(f"{kind}:{item['stem']} 仍限制 tier<=10")
-                    break
+    if t11_ids:
+        # XI 车需要 tier>10 可用项；基线数据集（无 XI）里 tier<=10 过滤是合法形态。
+        for kind, items in catalogs.items():
+            for item in items:
+                for rule in (item.get("filter") or {}).get("include") or []:
+                    tiers = rule.get("tiers")
+                    if tiers and tiers.get("max") == 10:
+                        problems.append(f"{kind}:{item['stem']} 仍限制 tier<=10")
+                        break
 
     refs = tank_refs({"tanks": modules_by_tank})
-    for tid in PREVIEW_TANKS:
+    for tid in t11_ids:
         ref = refs.get(tid)
         if not ref:
             continue
@@ -353,17 +371,19 @@ def validate(out: pathlib.Path) -> dict:
                 problems.append(f"{tid} {kind} 可用项过少: {pool}")
 
     params_doc = json.loads((out / "params/structure.json").read_text(encoding="utf-8"))
-    if "modulesDumpSection" not in {s.get("section") for s in params_doc.get("sections", [])}:
-        problems.append("params/structure.json 缺 modulesDumpSection")
     params_fmt = json.loads((out / "params/format.json").read_text(encoding="utf-8"))["params"]
     prefixes = ("track", "engine", "gun", "ammobay", "turretRotator",
                 "surveyingDevice", "fuelTank")
     suffixes = ("MaxHealth", "RegenHealth", "HysteresisHealth",
                 "RegenPerSec", "BurnPerSec", "RepairTime")
-    durability = [key for key in params_fmt
-                  if key.startswith(prefixes) and key.endswith(suffixes)]
-    if len(durability) != 42:
-        problems.append(f"模块耐久参数 {len(durability)} != 42")
+    if t11_ids:
+        # 预览客户端的参数增量断言（t11 链专属；基线客户端合并根不含这些增量）。
+        if "modulesDumpSection" not in {s.get("section") for s in params_doc.get("sections", [])}:
+            problems.append("params/structure.json 缺 modulesDumpSection")
+        durability = [key for key in params_fmt
+                      if key.startswith(prefixes) and key.endswith(suffixes)]
+        if len(durability) != 42:
+            problems.append(f"模块耐久参数 {len(durability)} != 42")
 
     meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
     counts = meta.get("counts") or {}
@@ -371,10 +391,12 @@ def validate(out: pathlib.Path) -> dict:
         problems.append("meta.counts.consumables 与文件不一致")
     if counts.get("provisions") != len(catalogs["provisions"]):
         problems.append("meta.counts.provisions 与文件不一致")
-    if counts.get("techTree") != EXPECTED_TT:
-        problems.append(f"techTree census {counts.get('techTree')} != {EXPECTED_TT}")
-    # 车数 = 11.21 基线 738 + 预览实装车（bridge 全部车型；t11r3 为 9 辆）。
-    expected_tanks = 738 + len(PREVIEW_TANKS)
+    # techTree census：t11 bridge 对 11.22 超测树（312 节点）；其余场景树应与基线一致。
+    expected_tt = EXPECTED_TT if t11_ids else baseline_counts.get("techTree")
+    if expected_tt is not None and counts.get("techTree") != expected_tt:
+        problems.append(f"techTree census {counts.get('techTree')} != {expected_tt}")
+    # 车数 = 基线车数（基座 meta）+ bridge 全部车型（t11r3 为 738+9；11.21.0_1 为 738+1）。
+    expected_tanks = baseline_counts.get("tanks", 738) + len(bridge_ids)
     if counts.get("tanks") != expected_tanks:
         problems.append(f"counts.tanks {counts.get('tanks')} != {expected_tanks}")
 
@@ -384,7 +406,7 @@ def validate(out: pathlib.Path) -> dict:
         "previewHpTop": expected_hp,
         "consumables": len(catalogs["consumables"]),
         "provisions": len(catalogs["provisions"]),
-        "previewTanks": len(PREVIEW_TANKS),
+        "previewTanks": len(t11_ids),
     }
 
 
@@ -408,13 +430,21 @@ def main() -> None:
         shutil.copytree(base, out)
         print(f"baseline: {base} -> {out}", flush=True)
     before = snapshot(out)
+    # 基线 census/车数：validate 的非 t11 期望值从这里派生（树/车数应只增 bridge 增量）。
+    baseline_meta_path = out / "meta.json"
+    baseline_counts = (json.loads(baseline_meta_path.read_text(encoding="utf-8"))
+                       .get("counts") or {}) if baseline_meta_path.is_file() else {}
+    bridge_path = pathlib.Path(args.bridge)
+    bridge_ids = {int(k) for k in json.loads(
+        (bridge_path if bridge_path.is_absolute() else ROOT / args.bridge)
+        .read_text(encoding="utf-8"))}
 
     run_exporter("--game-data", str(args.game_data), "--bridge", str(ROOT / args.bridge),
                  "--modules-only", "--merge", "--out", str(out))
     run_exporter("--game-data", str(args.game_data), "--items-only", "--out", str(out))
     params_check = sync_params(out, pathlib.Path(args.game_data))
     globals_check = sync_globals(out, pathlib.Path(args.game_data), ["en", "zh-Hans"])
-    checks = validate(out)
+    checks = validate(out, bridge_ids=bridge_ids, baseline_counts=baseline_counts)
     checks["params"] = params_check
     checks["globals"] = globals_check
     checks["paramsDurability"] = json.loads(

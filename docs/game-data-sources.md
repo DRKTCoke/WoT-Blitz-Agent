@@ -58,8 +58,13 @@
      * `localizations/<lang>.yaml`（**车辆/模块名**所在，带 `.etag` HTTP 缓存；
        `Data/server_config_urls.yaml` 指向 conf CDN）；
      * `dynamicContentLocalizations/<lang>.yaml`（**活动/offer 文案**，键形如
-       `2025-tank-12/Title`；实测**不含**车辆/模块名——名字面剩余的 2 条枪/履带名在
-       两处都没有）。**随包 strings 不含上线后新增的
+       `2025-tank-12/Title`；2026-10-10 实测不含车辆/模块名——**该结论被 11.21.0_1 推翻**
+       （2026-11-13）：新收藏车 Relic D3（Oth99_Relic）的车辆/部件/炮/引擎名键**只在
+       dynloc**（`localizations/` 同步后仍 0 命中），随 `s11.21.0_1` 的
+       `localizations/11.21.0_1_7405734/<lang>.yaml` 下发——**后期 SmartDLC 收藏车的
+       名字键落在 dynloc**，提取器的名字回退链已把 dynloc 作第三源接入
+       （`extract_vehicles.py::Names.OVERLAY_DIRS`，同款缺失键回退 + 拉丁值过滤））。
+       **随包 strings 不含上线后新增的
      活动/BP 车与模块名**——BP 车在 `camouflages.yaml` 注册、名字键（`<stem>_Custom[_short]`）
      只在覆盖层里——这就是"游戏能正常显示名字、而只读 `Data/` 的解包查不到"的原因。
      覆盖层按客户端语言缓存（实测机为 zh-Hans），但**专名跨语言同形**（Turbo/Magnate/
@@ -68,6 +73,22 @@
      如 `#artefacts:tungstentip/name` → 钨心弹）；en 无本机覆盖层，5 个后期标准物品名由
      导出器补充（`ITEM_NAME_SUPPLEMENT`），ru 按既有约定回退 en。英文数据不会取中文覆盖层值。
      依赖注记：per-user 运行时缓存（需客户端登录同步过；新装/未同步时会缺）
+
+**SmartDLC packs 持久叠加层（2026-11-13 实证）**：客户端把 SmartDLC 槽内容解包到
+`%LOCALAPPDATA%/wotblitz/packs/`，**以相同相对路径叠加在 `Data/` 之上**（同路径覆盖、
+新路径追加；退出不清除，随 DLC 槽位轮换——2026-10-08 为 Ferdinand 皮肤 45 件，
+2026-11-13 登录同步 `s11.21.0_1` 后为 474 件）。**dvpm 实际含完整车辆数据**：
+`XML/item_defs/vehicles/other/Oth99_Relic.xml.dvpl`（10.8KB 全量车辆 XML）+ other 国
+组件全套覆盖层 + `list.xml` 注册 + `3d/Tanks/Parameters/` + 碰撞体/主模型 sc2/scg +
+贴图 + Big/Small 图标——不只是"贴图/文案"（11-11 条目的定性不完备，BlitzKit 主站
+即消费同一通道）。**客户端还会把"既有路径"的 DLC 文件原地写进 `Data/` 本体**
+（组件/list.xml/根 yaml 等 135 件，mtime=登录时刻；packs/ 则是全量 474 件镜像）——
+以 Data 目录为差异基线会漏掉这批原地覆盖件，**DLC 差异审计必须以 packs 快照为增量根**
+（`plan_data_version.py --base <空> --new <packs快照>`）。路径解析统一走
+`tools/wotbtools/dlc_packs.py::client_path()`（Python 侧）与
+`game_extract.rs::resolve_client_path`（Rust 侧），packs 优先、缺失回退 Data。
+11.21.0_1 的构建流程：packs 快照 → 硬链接合并根 → `--pb-dir` 预构建 739 pb →
+plan(--strict)/apply_data_version 增量应用（详见 [index.md](index.md) 2026-11-14 条目）。
 
 **定位陷阱**：共享弹种定义不在 `vehicles/` 顶层，按文件名搜 `*shell*` 会一无所获；
 正确做法是解码整个 zip 后全文检索弹种名，命中 `components/shells.xml`。
@@ -699,9 +720,10 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   `s<ver>_<slot>` 槽位命名），禁止 `+` / `/`。两侧同款正则校验：本仓 `asset_release.py`
   与 WotbTools `useDataVersion.ts`——**origin 的 `versions.json` 引入新字符集 id 之前，
   必须先部署放宽后的前端 bundle**（旧 bundle 对 catalog 整目录 fail-closed）。
-  当前 dataset 登记：`11.21.0`（default，客户端基线命名）/ `11.21.0_1`（动态内容槽位，
-  数据面与 11.21.0 逐字节一致）/ `11.4.0.130`（超测客户端版本号，label 超测服；
-  2026-11-11 由 `supertest` 改名，未打补丁基线不用 `_0`——客户端无该命名）。
+  当前 dataset 登记：`11.21.0`（default，客户端基线命名，738 辆）/ `11.21.0_1`
+  （SmartDLC 槽位，2026-11-14 起充实为 11.21.0 基线 + Relic D3 = 739 辆，
+  release `11.21.0_1-20261114-r1`；此前 r1 为占位克隆）/ `11.4.0.130`（超测客户端版本号，
+  label 超测服；2026-11-11 由 `supertest` 改名，未打补丁基线不用 `_0`——客户端无该命名）。
 - 每个 release 内的 `version.json` 是不可变身份：`dataset_id` / `game_version` /
   `variant` / `release` / `generated` / `content_digest` / `manifest_sha256` /
   `tank_count` / `preview` / `min_client` / `status`。

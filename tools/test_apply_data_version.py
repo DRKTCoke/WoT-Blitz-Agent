@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -103,12 +104,60 @@ def dry_run_and_fail_closed(tmp: pathlib.Path) -> None:
     assert result.returncode != 0, "map registry change must fail closed"
 
 
+def pb_dir_wiring(tmp: pathlib.Path) -> None:
+    """--pb-dir：vehicle-assets 的逐车导出改读预构建 pb；core 预置函数只写 work/data。"""
+    base = tmp / "pack_pb"
+    (base / "data").mkdir(parents=True)
+    (base / "data/data_version.json").write_text("{}", encoding="utf-8")
+    (base / "data/tanks.pb").write_bytes(b"BASE738")
+    (base / "data/models.pb").write_bytes(b"BASEMODELS")
+    (base / "data/tank_cache.json").write_text("{}", encoding="utf-8")
+    pb_dir = tmp / "pb739"
+    pb_dir.mkdir()
+    (pb_dir / "tanks.pb").write_bytes(b"PB739")
+    (pb_dir / "models.pb").write_bytes(b"MODELS739")
+    out = tmp / "out_pb"
+
+    icons = _plan({"tank-icons": {"added": 1, "changed": 0, "removed": 0}},
+                  {"25201": {"nation": "other", "stem": "Oth99_Relic",
+                             "kinds": ["tank-icons"],
+                             "files": {"added": ["Gfx/UI/BigTankIcons/x.packed.webp.dvpl"]}}})
+    result = run_apply(base, out, icons, "--dry-run", "--only", "vehicle-assets",
+                       "--pb-dir", str(pb_dir))
+    assert result.returncode == 0, result.stderr
+    # apply 会 resolve()（Windows 短路径名展开），断言用同形路径比对尾部片段。
+    assert "--pb" in result.stdout and "pb739" + os.sep + "tanks.pb" in result.stdout, \
+        result.stdout
+
+    # core 预置：reverse_pack_to_data 复制 base pb（非硬链接）→ seed 覆盖 → base 不动。
+    import pack_incremental as P
+    from data_version_handlers import seed_pb_dir
+    work = tmp / "work_seed"
+    work.mkdir()
+    P.reverse_pack_to_data(base, work)
+    seed_pb_dir(pb_dir, work / "data")
+    assert (work / "data/tanks.pb").read_bytes() == b"PB739"
+    assert (work / "data/models.pb").read_bytes() == b"MODELS739"
+    assert (base / "data/tanks.pb").read_bytes() == b"BASE738", "base pack must not be written"
+    # 缺文件 fail-closed。
+    bad = tmp / "pb_bad"
+    bad.mkdir()
+    (bad / "tanks.pb").write_bytes(b"x")
+    try:
+        seed_pb_dir(bad, work / "data")
+    except SystemExit as exc:
+        assert "models.pb" in str(exc), exc
+    else:
+        raise AssertionError("missing models.pb must fail closed")
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = pathlib.Path(tmp)
         clone_keeps_nested_metadata(tmp)
         incremental_overlay(tmp)
         dry_run_and_fail_closed(tmp)
+        pb_dir_wiring(tmp)
     print("apply data version tests: PASS")
 
 

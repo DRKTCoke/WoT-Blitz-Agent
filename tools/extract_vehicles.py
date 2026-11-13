@@ -320,15 +320,25 @@ class Names:
     活动/BP 车与模块名——这正是"客户端能正常显示、而本地 Data 查不到"的原因。覆盖层只按
     客户端语言缓存（本机为 zh-Hans），但**专名跨语言同形**（Turbo/Magnate/Panlong…），
     故：仅作**缺失键的回退**、且只接受**拉丁值**（避免把中文译名灌进英文数据）。
+
+    **第三字符串源（2026-11-13）**：SmartDLC 动态本地化
+    `%LOCALAPPDATA%/wotblitz/DAVAProject/cache/dynamicContentLocalizations/<lang>.yaml`
+    此前实测"不含车辆/模块名"——被 11.21.0_1 槽推翻：新收藏车 Oth99_Relic（Relic D3）
+    的车辆/部件/炮/引擎名键**只在 dynloc**（`localizations/` 更新后仍 0 命中），随
+    `s11.21.0_1` 的 `localizations/11.21.0_1_7405734/` 下发。同样只作缺失键回退、
+    只收拉丁值（"Relic D3" 天然通过）。
     """
 
     # YAML 双引号串的转义（客户端文件里真实出现：`\xe4`→ä、`\u00A0`→NBSP、`\n`）
     _ESC = re.compile(r"\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|n|t|\"|\\|/)")
 
-    # 运行时本地化覆盖层（客户端语言缓存；仅回退用，见类注释）
+    # 运行时本地化覆盖层（客户端语言缓存；仅回退用，见类注释）。
+    # dynloc 层排在普通覆盖层之后：后者已覆盖 738 辆现役车，dynloc 只补动态下发的新车。
     OVERLAY_DIRS = (
         "%LOCALAPPDATA%/wotblitz/DAVAProject/cache/localizations",
         "~/wotblitz/DAVAProject/cache/localizations",
+        "%LOCALAPPDATA%/wotblitz/DAVAProject/cache/dynamicContentLocalizations",
+        "~/wotblitz/DAVAProject/cache/dynamicContentLocalizations",
     )
 
     @classmethod
