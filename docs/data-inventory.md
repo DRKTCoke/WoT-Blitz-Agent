@@ -134,10 +134,10 @@
   manifest 的 path→sha256 与语义化 `data_version` 决定（排除 `generated`、`upstream_commit`、
   `worktree_dirty` 与重新提取的时间戳），同内容重建不漂移。`manifest.json` /
   `version.json` / `delta.json` / `overhead/` 是发布元数据/中间件，不进入内容清单。
-  当前生产登记的三个 dataset（2026-11-11 命名对齐客户端；`11.21.0_1` 于 2026-11-14 充实发布）：`11.21.0`
-  （738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）、
-  `11.21.0_1`（SmartDLC 槽位，release `11.21.0_1-20261114-r1`，**739 辆 / 5972 件** =
-  11.21.0 基线 + Relic D3；26 图场景替换延期，地图平面与 11.21.0 同烘焙）与
+  当前生产登记的三个 dataset（2026-11-11 命名对齐客户端；`11.21.0_1` 于 2026-11-14 充实发布并接任
+  **default**）：`11.21.0_1`（SmartDLC 槽位，release `11.21.0_1-20261114-r1`，**739 辆 / 5972 件** =
+  11.21.0 基线 + Relic D3；26 图场景替换延期，地图平面与 11.21.0 同烘焙）、`11.21.0`
+  （738 辆，release `11.21.0-20261106-r2`，5965 件，含 `research/tech_tree/**`；前 default，保留回滚）与
   `11.4.0.138`（超测客户端自身版本号，label「超测服 11.4.0.138」，747 辆，release `t11r3-20261113-r3`，
   **显式选择**；2026-11-11 由 id `supertest` 改名，旧 `?data=supertest` 链接随之失效）。
   dataset_id 字符集含 `_`（本日放宽；`?data=` 引入 `_` id 前须先部署放宽校验的 WotbTools
