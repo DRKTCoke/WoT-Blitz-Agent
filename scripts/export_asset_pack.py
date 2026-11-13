@@ -49,6 +49,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+from pack_incremental import overlay_bytes
+from tank_image_overrides import apply_covers, load_catalog, matches_dataset
+
 GROUND_LAYERS = ["cm", "lm", "tile0", "tile1", "mask0", "mask1", "hmap0", "hmap1"]
 
 
@@ -129,8 +133,8 @@ def refresh_manifest(out: Path, data: Path) -> int:
         "data_version": data_version,
         "files": entries,
     }
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1),
-                                       encoding="utf-8")
+    # Candidate directories can share hard links with an immutable release.
+    overlay_bytes(out, "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
     mb = sum(e["bytes"] for e in entries) / 1e6
     print(f"manifest.json 已按包内容重算: {len(entries)} 文件 / {mb:.1f}MB → {out / 'manifest.json'}")
     return 0
@@ -144,10 +148,27 @@ def main() -> None:
                     help="wotb-agent dump-map-index 的 JSON 输出（--refresh-manifest 时不需要）")
     ap.add_argument("--refresh-manifest", action="store_true",
                     help="不重新打包：按 --out 现有内容重算 manifest.json 的逐文件 sha256")
+    ap.add_argument("--dataset-id", help="WG 原图所属 dataset；与稍后 stamp 的公开路径独立")
+    ap.add_argument("--raw-tank-images", type=Path,
+                    help="增量候选包的 WG 原始封面目录（与 --refresh-manifest、--dataset-id 一起使用）")
     args = ap.parse_args()
 
+    if (args.out / "version.json").exists():
+        ap.error("已 stamp 的包不可变；请使用单独的未发布候选目录")
     if args.refresh_manifest:
+        if bool(args.dataset_id) != bool(args.raw_tank_images):
+            ap.error("增量覆盖须同时指定 --dataset-id 和 --raw-tank-images")
+        if args.raw_tank_images:
+            catalog = load_catalog()
+            version_path = args.out / "data/data_version.json"
+            source = None
+            if version_path.is_file():
+                version = json.loads(version_path.read_text(encoding="utf-8"))
+                source = (version.get("preview") or {}).get("source")
+            apply_covers(args.out, args.raw_tank_images, matches_dataset(catalog, args.dataset_id, source), catalog)
         raise SystemExit(refresh_manifest(args.out, args.data))
+    if args.raw_tank_images:
+        ap.error("全量打包从 --data/cache/tank_images 读取原图")
     if args.map_index is None:
         ap.error("--map-index 必填（除非使用 --refresh-manifest）")
 
@@ -429,6 +450,11 @@ def main() -> None:
             data_version = json.loads(dv_path.read_text(encoding="utf-8"))
         except Exception:
             data_version = None
+
+    catalog = load_catalog()
+    preview_source = ((data_version or {}).get("preview") or {}).get("source")
+    if matches_dataset(catalog, args.dataset_id, preview_source):
+        apply_covers(out, img_dir, True, catalog)
 
     # ---- index.json（前端一次性装载：数字 id → key） ----
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")

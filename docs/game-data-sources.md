@@ -247,6 +247,8 @@ WotbTools 经 assetProvider 加载，**不进入前端 bundle**。全局图标�
 
 ### 2.7 11.22 tier XI 超测预览 ZIP（非现役源）
 
+XI 级预览车的封面来源是同版客户端的默认外观模型及贴图。对仍为黄鸭的 8 张封面，构建时按源客户端、车型、原图与模型配置摘要应用审定图；收到正式客户端图片后恢复 WG 原图。详见[渲染与打包命令](../data/tank_image_overrides/README.md)。
+
 **当前预览源（2026-11-12 起）**：`http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.138_t11r3.zip`
 （20,878,922,119 B ≈ 19.4 GiB，Last-Modified 2026-11-12；`version.txt.dvpl` =
 `11.4.0.138_7408695 11.22_supertest_tier11_6 WOTB_Win7`）。dataset **`11.4.0.138`**

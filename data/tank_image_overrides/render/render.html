@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Tank cover renderer</title>
+<script type="importmap">
+{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const renderer = new THREE.WebGLRenderer({
+  alpha: true, antialias: true, preserveDrawingBuffer: true,
+});
+renderer.setClearColor(0, 0);
+renderer.setSize(1600, 1600, false);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+const generator = new THREE.PMREMGenerator(renderer);
+scene.environment = generator.fromScene(new RoomEnvironment(), 0.06).texture;
+scene.environmentIntensity = 0.46;
+const sun = new THREE.DirectionalLight(0xfff4da, 3);
+sun.position.set(5, 7, 12);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 0.1, far: 40 });
+sun.shadow.normalBias = 0.015;
+scene.add(sun);
+const fill = new THREE.HemisphereLight(0xf1f4ff, 0x535052, 0.58);
+fill.position.set(0, 0, 1);
+scene.add(fill);
+
+// The exported GLB has a Z-up frame, with the gun pointing towards +Y.
+const target = new THREE.Vector3(0, 1, 1.6);
+const azimuth = 30 * Math.PI / 180;
+const elevation = 39 * Math.PI / 180;
+const camera = new THREE.OrthographicCamera(-8, 8, 8, -8, 0.1, 80);
+camera.up.set(0, 0, 1);
+camera.position.set(
+  -Math.sin(azimuth) * Math.cos(elevation),
+  Math.cos(azimuth) * Math.cos(elevation),
+  Math.sin(elevation),
+).multiplyScalar(26).add(target);
+camera.lookAt(target);
+
+function selectConfigGroup(root, pattern, index) {
+  const groups = new Map();
+  root.traverse(node => {
+    const match = node.name.match(pattern);
+    if (!match) return;
+    const number = Number(match[1]);
+    if (!groups.has(number)) groups.set(number, []);
+    groups.get(number).push(node);
+  });
+  if (groups.size === 0) throw new Error('Missing configuration group ' + pattern);
+  const keys = [...groups.keys()].sort((a, b) => a - b);
+  const selected = keys[index % keys.length];
+  for (const [key, nodes] of groups) {
+    for (const node of nodes) node.visible = key === selected;
+  }
+}
+
+window.renderTank = async id => {
+  const [asset, tank] = await Promise.all([
+    new GLTFLoader().loadAsync('/pack/glb/' + id + '/model.glb'),
+    fetch('/pack/tank/' + id + '.json').then(response => response.json()),
+  ]);
+  const root = asset.scene; // Inactive hide_elements are in a separate scene.
+  const config = tank.configs.at(-1);
+  if (tank.initial_turret_rotation) throw new Error('Review authored turret rotation for ' + id);
+  selectConfigGroup(root, /^gun_(\d+)/, config.gun_index);
+  selectConfigGroup(root, /^turret_(\d+)$/, config.turret_index);
+  root.traverse(node => {
+    if (node.isMesh) {
+      node.castShadow = true;
+      node.receiveShadow = true;
+    }
+  });
+  scene.add(root);
+  renderer.render(scene, camera);
+  return renderer.domElement.toDataURL('image/png').split(',')[1];
+};
+</script>

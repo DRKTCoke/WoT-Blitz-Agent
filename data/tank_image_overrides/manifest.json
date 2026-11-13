@@ -1,0 +1,75 @@
+{
+  "dataset_id": "11.4.0.138",
+  "preview_source": "https://cdn.static.wotb.app/win7/WotBlitz_11.4.0.138_t11r3.zip",
+  "source_release": "t11r3-20261113-r4-mechanics",
+  "source_manifest_sha256": "af644335cd9cf6c6aaf6623c6e17a975051dd305a4ac899123fb7c0f6ea3ba26",
+  "asset_base": "https://assets.wotbtools.com/v/11.4.0.138/",
+  "placeholder_sha256": "53fd1d5a2b91602d95338ed60049ee07833f5f3e4e2dd4d438c1aaaeb69cb6e0",
+  "recipe": {
+    "three": "0.185.1",
+    "playwright": "1.65.1",
+    "browser": "Chrome 157.0.8103.78",
+    "pillow": "10.4.0",
+    "angle": "SwiftShader",
+    "azimuth_deg": 30,
+    "elevation_deg": 39
+  },
+  "vehicles": {
+    "10593": {
+      "name": "Ho-Ri 4",
+      "enabled": true,
+      "model_sha256": "cd9081af39a5d3154083bdd9a72e198fd03fa8d842de0812aaadd1fcc2c64ff7",
+      "tank_sha256": "580e458c22d041b5115969e3ec2febcf62cf78ea51c4fa71a6c53dcef7ecf6c1",
+      "sha256": "3cecc44900f97f01911af8b17593e8028b04e0ac9693b25431efc9b74ab2d15b"
+    },
+    "15153": {
+      "name": "BZ-79",
+      "enabled": true,
+      "model_sha256": "f0915d8591cc4b19b048da25d171b5c4621d8513db658f2787f7b0d0c07d1f3e",
+      "tank_sha256": "40b144ca0d7a13188c4103ec047b6d418cdc459988dc662a37f297e68fdcbb88",
+      "sha256": "34c1fed56ceb375eec61b2d49cda8267ed9cc91fd27ac68eab5aee67ade74a05"
+    },
+    "23361": {
+      "name": "AS-XX 40 t",
+      "enabled": true,
+      "model_sha256": "5b5b237ec1ca467819290e860f495658c2b7d1c0ee73cb55f0f8b84a690b19c9",
+      "tank_sha256": "d34ce775180cc74560d31b772a1adf09db64ed0fbef58f56849a3c4e57e09fb5",
+      "sha256": "5209ff241dcf2b93d19445572d9c90a1bc95a8592387536b851a9ea851b15f6c"
+    },
+    "27905": {
+      "name": "Object 432U",
+      "enabled": true,
+      "model_sha256": "301e37560a1d4a492688c28dac616be39dfd33093a2e506f483ab1fd8a28b06f",
+      "tank_sha256": "b0739577374ace5ac8a60da6764e48de191261f0bd14eb87624321ee1216cf4c",
+      "sha256": "cef07afa29cf691ea521d2f52849bf7cca1f0f45ff9ea041c620e4ca3e104348"
+    },
+    "28161": {
+      "name": "KR-1",
+      "enabled": true,
+      "model_sha256": "e972c33eca407119776ba297ce79677ac20f851e7790236e76ee6e5674c9aacf",
+      "tank_sha256": "2937d21857c144772872e4c697882732973252d4334aa20e278f05d9742728b8",
+      "sha256": "63f4b1221c7adf228ca77686f171c7b8a945112078af4ef7d38bc1ade53ea00a"
+    },
+    "30241": {
+      "name": "Black Rock",
+      "enabled": true,
+      "model_sha256": "b901fc8e4384c0a44bb3149284df5d760f7d4c385b68ec2a42f0f716f86a5ce8",
+      "tank_sha256": "667e725ecc676aad714714e8c262355cef3b576b33b7840fa1f34ca629a8d36a",
+      "sha256": "890d857d494bdec1e578dedce334580943c42084793aa45a94bfbc1c01c25a28"
+    },
+    "30737": {
+      "name": "Taschenratte",
+      "enabled": true,
+      "model_sha256": "befee50a920cf46c797e31189de73453e870be4dacb2d895845e442f1ebbb0f8",
+      "tank_sha256": "15d5a82a590c89971dbb22bec85dabc267fe693c5e6096d425dc73a5fd605884",
+      "sha256": "e15735719d3c45190b65df91cd3a388317fa352c92fca99f32b828f4feedcbb7"
+    },
+    "30993": {
+      "name": "Hirschkäfer",
+      "enabled": true,
+      "model_sha256": "51ed157d7abae7e50dfdae794c98d1026b93c1f5e3ea12d980faf6edd64b2776",
+      "tank_sha256": "f0c717c8f4b3869def5a740e263fc05824231684196dd937a949b4f87fda3f8b",
+      "sha256": "61f1951f3ae77986d03691ec68e4385c0b10c411fbf224e134886d84b41ee622"
+    }
+  }
+}

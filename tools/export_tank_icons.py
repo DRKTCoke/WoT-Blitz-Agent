@@ -569,7 +569,8 @@ def emit_crops(out_dir: pathlib.Path, crops_out: pathlib.Path) -> int:
             continue
         with Image.open(p) as im:
             canvas_w, canvas_h = im.size
-            bbox = im.getchannel("A").getbbox()
+            # Opaque WebP decodes as RGB; every canvas pixel belongs to its content box.
+            bbox = im.getchannel("A").getbbox() if "A" in im.getbands() else (0, 0, canvas_w, canvas_h)
         if bbox is None:
             blank.append(p.stem)
             continue
