@@ -313,6 +313,14 @@ germany=9——数值以各包 `list.xml` 实测 `(id<<8)|低位` 为准）。t1
   含 "t43"），装上别人的装甲——匹配器已改为**词缀锚定**（前缀/后缀才允许包含），
   完整客户端 738 辆 game_data 逐字节无回归。
 
+**t11r3 配置器数据（11.4.0.138）**。对于带有 `isVehicleAbility` 标记和
+`script.params.gun` 的物品，`research/{consumables,provisions}.json` 的 `auxiliaryGun`
+按同版客户端的国别枪械引用解析。`reference` 保留原引用，`reloadTime` 为秒，
+`clip` 与 `burst` 在源中出现时记录 `{count,rate}`（发数及每分钟发数）。
+`shots` 保留原顺序和弹种 stem，提供装甲伤害、初速和客户端定义的加速度。
+车辆模块 `turrets[].guns[].stats.clip` 同样保留内联弹夹的 count/rate。
+两种弹间隔均按各自的 `60/rate` 计算。
+
 **历史预览源（t11b，2026-10-22 核验）**：
 `http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.119_t11b.zip`
 （20,666,565,975 B，`11.22_supertest_tier11_4`，Last-Modified 2026-10-19）；当时的

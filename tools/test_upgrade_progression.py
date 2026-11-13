@@ -430,7 +430,44 @@ def test_module_durability_params() -> None:
     assert fmt["engineMaxHealth"] == {}, fmt["engineMaxHealth"]
 
 
+def test_ability_gun_references() -> None:
+    from unittest.mock import patch
+
+    class Components:
+        definitions = {
+            ("guns", "secondary"): ET.fromstring(
+                "<gun><reloadTime>19</reloadTime><clip><count>2</count><rate>40</rate>"
+                "</clip><shots><ap/><rocket><speed>40</speed></rocket></shots></gun>"),
+            ("shells", "ap"): ET.fromstring(
+                "<ap><damage><armor>150</armor></damage><speed>1200</speed></ap>"),
+            ("shells", "rocket"): ET.fromstring(
+                "<rocket><damage><armor>320</armor></damage><speed>0</speed>"
+                "<acceleration>20</acceleration></rocket>"),
+        }
+
+        def __init__(self, path):
+            assert path.parts[-2:] == ("germany", "components")
+
+        def shared_def(self, kind, stem):
+            return self.definitions.get((kind, stem))
+
+    with patch.object(E, "Components", Components):
+        gun = E.auxiliary_gun(pathlib.Path("."), "germany:secondary")
+        assert gun == {"reference": "germany:secondary", "reloadTime": 19,
+                       "clip": {"count": 2, "rate": 40},
+                       "shots": [{"stem": "ap", "damage": 150, "speed": 1200},
+                                 {"stem": "rocket", "damage": 320, "speed": 40,
+                                  "acceleration": 20}]}
+        try:
+            E.auxiliary_gun(pathlib.Path("."), "germany:missing")
+        except ValueError as exc:
+            assert "missing ability gun" in str(exc)
+        else:
+            raise AssertionError("dangling ability gun reference accepted")
+
+
 def main() -> None:
+    test_ability_gun_references()
     test_parser_roundtrip()
     test_layout_fail_closed()
     test_real_preview_artifact()

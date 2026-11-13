@@ -709,6 +709,9 @@ def export_module_kind(root: ET.Element, kind: str, comp: Components,
                     # pitchLimits 是元素型（<min>/<max>[+front/back/transition]，重复标签
                     # last-wins）——复用提取链 parse_pitch 的权威解析，不自行猜文本格式。
                     gm["stats"]["pitchLimits"] = parse_pitch(DefResolver(g, gshared))
+                    clip = last_child(g, "clip")
+                    if clip is not None:
+                        gm["stats"]["clip"] = shot_sequence(clip)
                     guns.append(gm)
             m["guns"] = guns
         elif kind == "engines":
@@ -836,6 +839,46 @@ def load_component(comp_dir: pathlib.Path, kind: str) -> tuple[dict[str, int], d
     return ids, shared
 
 
+def shot_sequence(node: ET.Element) -> dict:
+    """Raw client count and rounds/minute. Interval in seconds is 60/rate."""
+    count_text, rate_text = ftext(node, "count"), ftext(node, "rate")
+    if not count_text or not rate_text:
+        raise ValueError(f"incomplete {node.tag} sequence")
+    return {"count": int(count_text), "rate": float(rate_text)}
+
+
+def auxiliary_gun(game_data: pathlib.Path, reference: str) -> dict:
+    """Follow a vehicle ability's qualified gun reference into the same client's components."""
+    nation, _, stem = reference.partition(":")
+    if nation not in NATIONS or not stem or ":" in stem:
+        raise ValueError(f"invalid ability gun reference {reference!r}")
+    comp = Components(game_data / "XML/item_defs/vehicles" / nation / "components")
+    gun = comp.shared_def("guns", stem)
+    if gun is None:
+        raise ValueError(f"missing ability gun {reference!r}")
+    result = {"reference": reference, "reloadTime": ffloat(gun, "reloadTime"), "shots": []}
+    for key in ("clip", "burst"):
+        seq = last_child(gun, key)
+        if seq is not None:
+            result[key] = shot_sequence(seq)
+    shots = last_child(gun, "shots")
+    if result["reloadTime"] is None or shots is None or not len(shots):
+        raise ValueError(f"missing reloadTime or shots for ability gun {reference!r}")
+    for shot in shots:
+        shell = comp.shared_def("shells", shot.tag)
+        if shell is None:
+            raise ValueError(f"missing shell {shot.tag!r} for ability gun {reference!r}")
+        trajectory = DefResolver(shot, shell)
+        row = {"stem": shot.tag, "damage": ffloat(shell, "damage/armor"),
+               "speed": trajectory.floats("speed", None)}
+        if row["damage"] is None or row["speed"] is None:
+            raise ValueError(f"incomplete shell {shot.tag!r} for ability gun {reference!r}")
+        if trajectory.elem("acceleration") is not None:
+            row["acceleration"] = float(trajectory.text("acceleration"))
+        result["shots"].append(row)
+    return result
+
+
 def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, dict],
                  *, include_vehicle_ability: bool = False) -> list[dict]:
     list_path = game_data / f"XML/item_defs/vehicles/common/{kind}/list.xml.dvpl"
@@ -867,6 +910,10 @@ def export_items(game_data: pathlib.Path, kind: str, tables_by_lang: dict[str, d
                 "isAbility": el.find("isAbility") is not None
                 or el.find("isVehicleAbility") is not None,
             }
+            if el.find("isVehicleAbility") is not None:
+                gun = (item["script"] or {}).get("params", {}).get("gun")
+                if gun is not None:
+                    item["auxiliaryGun"] = auxiliary_gun(game_data, gun)
             if include_vehicle_ability:
                 item["isVehicleAbility"] = el.find("isVehicleAbility") is not None
             for lang, table in tables_by_lang.items():
