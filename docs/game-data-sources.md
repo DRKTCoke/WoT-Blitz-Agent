@@ -438,7 +438,8 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
   `vehicleAbilities`；r6（`ed940dfb…`，strings/meta）、r5（`1ec79041…`，42 个模块耐久参数）、r4（`1dcf3221…`）、
   r4-xi-items（`2820bbff…`）、r3（`3c0a4b62…`）、r2（`89b5cc64…`）、旧
   `t11p2-20261106`（`ea489ff1…`）与首发 `t11p2-20261105` 均保留可回滚），dataset
-  通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役，default）；`11.22` 通道待 11.22
+  通道为 `supertest`（超测服，显式选择）+ `11.21.0`（现役基线；default 于 2026-11-14
+  移交 `11.21.0_1`）；`11.22` 通道待 11.22
   正式服包发布时加入（三通道终态：超测服 / 11.21 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线；`tank-burst-dpm-20261104`
   release 保留作超测通道回滚。弹种表 2090 → **2099**（+9 个新弹种 ID）。
@@ -720,9 +721,9 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   `s<ver>_<slot>` 槽位命名），禁止 `+` / `/`。两侧同款正则校验：本仓 `asset_release.py`
   与 WotbTools `useDataVersion.ts`——**origin 的 `versions.json` 引入新字符集 id 之前，
   必须先部署放宽后的前端 bundle**（旧 bundle 对 catalog 整目录 fail-closed）。
-  当前 dataset 登记：`11.21.0`（default，客户端基线命名，738 辆）/ `11.21.0_1`
-  （SmartDLC 槽位，2026-11-14 起充实为 11.21.0 基线 + Relic D3 = 739 辆，
-  release `11.21.0_1-20261114-r1`；此前 r1 为占位克隆）/ `11.4.0.130`（超测客户端版本号，
+  当前 dataset 登记：`11.21.0_1`（**default，2026-11-14 起**——SmartDLC 槽位，充实为
+  11.21.0 基线 + Relic D3 = 739 辆，release `11.21.0_1-20261114-r1`；此前 r1 为占位克隆）/
+  `11.21.0`（客户端基线命名，738 辆，保留回滚）/ `11.4.0.130`（超测客户端版本号，
   label 超测服；2026-11-11 由 `supertest` 改名，未打补丁基线不用 `_0`——客户端无该命名）。
 - 每个 release 内的 `version.json` 是不可变身份：`dataset_id` / `game_version` /
   `variant` / `release` / `generated` / `content_digest` / `manifest_sha256` /
@@ -746,12 +747,13 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
   `default --dataset <id>`、`rollback --dataset <id> --release <release-id>`。
 - 对外路径：`/v/<dataset-id>/...` 与 `/versions.json`；根路径仍是 `current`，
   旧客户端零改动。前端通过 `?data=<id>` 与显式下拉切换（WotbTools 实现）。
-- **生产登记（2026-11-05/06）**：dataset 通道为 **`11.21.0`（现役，default，
-  release `11.21.0-20261106-r2`，738 辆，5965 件，含 `research/tech_tree/**`）+
+- **生产登记（2026-11-05/06 登记，2026-11-14 起默认入口移交）**：dataset 通道为 **`11.21.0`（现役基线，
+  release `11.21.0-20261106-r2`，738 辆，5965 件，含 `research/tech_tree/**`；default 于
+  2026-11-14 移交 `11.21.0_1`，保留回滚）+
   `supertest`（超测服，release `t11p2-20261106-r3`，743 辆，仅显式选择）**；`11.22`
   通道待 11.22 正式服包发布时加入（三通道终态：11.21 / 超测服 / 11.22）。旧通道
   `11.21.0-t11-preview` 已 `dataset.sh unlink` 下线（release 保留回滚）；`current`
-  指向 11.21.0，`supertest` 不再占默认入口。
+现指向 `11.21.0_1`，`supertest` 不再占默认入口。
   `asset_release.py delta` 对通道改名需显式 `--allow-dataset-change`（delta.json 记
   `dataset_changed_from`）。`/versions.json` 与 `/v/<id>/...` 需 WotbTools 的 Caddyfile
   redeploy 后生效（2026-11-06 已上线，回读 200）；新 Caddyfile 已在临时容器对真实 `/srv/wotb-assets`
