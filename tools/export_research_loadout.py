@@ -493,6 +493,60 @@ def upgrade_top_hp(tank: dict, progression: dict) -> int | None:
     return int(round(float(hull["hp"]) + float(turret_hp) + bonus))
 
 
+def upgrade_top_shell_bonuses(progression: dict) -> list[dict[str, float]] | None:
+    """点满强化树（top 选择语义）的**逐弹槽加成**，供 tank_cache 的 `*_top` 弹种字段。
+
+    选择语义与 `upgrade_top_hp` / WotbTools `resolveUpgradeSelection(mode='top')` 一致：
+    所有非 alternative 节点 + 每个 alternative group 的首个 choice。只统计
+    `ShellPiercingPowerUpgrade` 近距（params.distance != '500'；远距加成
+    tank_cache 不承载，详情页由 projectTankUpgrades 实时投影）与
+    `ShellDamageUpgrade`——即 tank_cache 逐弹实际携带、且会被强化树修改的两个字段。
+
+    返回按 slotIndex 的稠密表（`[{"pen": .., "damage": ..}, ...]`，缺失槽位补 0）；
+    车辆不含任何弹槽加成属性时返回 None。slotIndex 缺失/非法直接抛错（fail-closed）；
+    槽位数与实际弹数的对齐由消费方（tank_resolver，以 pb 弹数为准）校验。
+    """
+    selected = {
+        node["id"] for node in progression["nodes"]
+        if node["type"] != "NODETYPE_ALTERNATIVE_MECHANIC"
+    }
+    for group in progression["alternativeGroups"]:
+        selected.add(group["choices"][0])
+    definitions = progression["attributeDefinitions"]
+    by_slot: dict[int, dict[str, float]] = {}
+    saw_shell_attr = False
+    for node in progression["nodes"]:
+        if node["id"] not in selected:
+            continue
+        for attr in node["attributes"]:
+            defn = definitions.get(attr["name"])
+            if defn is None:
+                continue
+            script = defn.get("script")
+            if script not in ("ShellPiercingPowerUpgrade", "ShellDamageUpgrade"):
+                continue
+            saw_shell_attr = True
+            params = defn.get("params") or {}
+            raw_slot = params.get("slotIndex")
+            if raw_slot is None or not str(raw_slot).lstrip("-").isdigit():
+                raise RuntimeError(
+                    f"强化弹槽属性 {attr['name']} 缺合法 slotIndex（fail-closed）")
+            slot = int(raw_slot)
+            if slot < 0:
+                raise RuntimeError(
+                    f"强化弹槽属性 {attr['name']} slotIndex 为负（fail-closed）")
+            acc = by_slot.setdefault(slot, {"pen": 0.0, "damage": 0.0})
+            value = float(attr["value"])
+            if script == "ShellDamageUpgrade":
+                acc["damage"] += value
+            elif str(params.get("distance")) != "500":
+                acc["pen"] += value
+    if not saw_shell_attr:
+        return None
+    zero = {"pen": 0.0, "damage": 0.0}
+    return [dict(by_slot.get(i, zero)) for i in range(max(by_slot) + 1)]
+
+
 def module_common_fields(el: ET.Element, shared: ET.Element | None, resolver_local_id: int | None,
                          names_by_lang: dict, tables_by_lang: dict, nation: str) -> dict:
     """模块公共字段：stem/localId/名称/等级/价格 + unlocks（last-wins 解析由 ElementTree 天然保证）。"""
@@ -1502,6 +1556,8 @@ def main() -> None:
         upgrade_attributes_sha256 = hashlib.sha256(attr_raw).hexdigest()
     # tank_id -> 顶级总 HP（车体 + 顶炮塔 + MAX_HEALTH 节点）；Rust tank_cache 消费。
     top_hp_by_tank: dict[int, int] = {}
+    # tank_id -> 逐弹槽点满加成（pen100/pen500/damage）；Rust tank_cache 消费。
+    top_shells_by_tank: dict[int, list[dict[str, float]]] = {}
 
     if args.tech_tree_extra and not args.with_research_graph:
         ap.error("--tech-tree-extra 只能与 --with-research-graph 连用")
@@ -1652,6 +1708,9 @@ def main() -> None:
                 hp_top = upgrade_top_hp(tank, progression)
                 if hp_top is not None:
                     top_hp_by_tank[tid] = hp_top
+                shell_bonuses = upgrade_top_shell_bonuses(progression)
+                if shell_bonuses is not None:
+                    top_shells_by_tank[tid] = shell_bonuses
             # 车辆模型碰撞盒（尺寸参数）：车体/底盘盒在车辆级，炮塔盒挂在逐炮塔上
             # （随所选炮塔变）。turretOrigin 是 XML <turretPositions> 的 [x, 上, 前]，
             # 与包围盒坐标 [x, 前, 上] 的换算在前端 compute 中完成（见 §5 公式表）。
@@ -1716,6 +1775,24 @@ def main() -> None:
             "tanks": {str(k): merged_top_hp[k] for k in sorted(merged_top_hp)},
         }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         print(f"   [upgrade] top HP: {len(merged_top_hp)} tanks -> {top_hp_path}")
+
+    # 顶级弹槽加成旁路表：Rust `TankResolver::from_blitzkit` 读它把点满强化树的
+    # pen/damage 叠加进 tank_cache 逐弹 `penetration_top` / `damage_top`
+    # （卡片口径 = 无配件 + 强化树点满，与 hp_top 同语义）。预览 merge 保留既有条目。
+    top_shells_path = out_root.parent / "upgrade_top_shells.json"
+    merged_top_shells: dict[int, list[dict[str, float]]] = {}
+    if args.merge and top_shells_path.exists():
+        previous_shells = json.loads(top_shells_path.read_text(encoding="utf-8"))
+        merged_top_shells.update({
+            int(k): v for k, v in (previous_shells.get("tanks") or {}).items()
+        })
+    merged_top_shells.update(top_shells_by_tank)
+    if merged_top_shells:
+        top_shells_path.write_text(json.dumps({
+            "meta": {"gameVersion": version, "count": len(merged_top_shells)},
+            "tanks": {str(k): merged_top_shells[k] for k in sorted(merged_top_shells)},
+        }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"   [upgrade] top shells: {len(merged_top_shells)} tanks -> {top_shells_path}")
 
     if args.modules_only:
         # bridge 是这次要导出的权威清单；任何一个条目没落到输出都必须失败，

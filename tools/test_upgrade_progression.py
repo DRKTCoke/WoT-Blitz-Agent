@@ -189,6 +189,63 @@ def test_parser_roundtrip() -> None:
     assert E.upgrade_top_hp(tank, progression) == 1600
 
 
+def test_top_shell_bonuses() -> None:
+    """逐弹槽点满加成：top 选择语义、distance==500 不计近距、稀疏槽位稠密化、fail-closed。"""
+
+    def progression(nodes, groups=()):
+        defs = {
+            "ATTRIBUTE_NAME_SHELL_PIERCING_POWER_100_SLOT_1": {
+                "script": "ShellPiercingPowerUpgrade", "params": {"slotIndex": "0", "distance": "100"}},
+            "ATTRIBUTE_NAME_SHELL_PIERCING_POWER_500_SLOT_1": {
+                "script": "ShellPiercingPowerUpgrade", "params": {"slotIndex": "0", "distance": "500"}},
+            "ATTRIBUTE_NAME_SHELL_DAMAGE_SLOT_2": {
+                "script": "ShellDamageUpgrade", "params": {"slotIndex": "1"}},
+        }
+        return {
+            "nodes": nodes,
+            "alternativeGroups": list(groups),
+            "attributeDefinitions": defs,
+        }
+
+    node = lambda nid, ntype, attrs: {"id": nid, "type": ntype, "attributes": attrs}  # noqa: E731
+    common_pen = {"name": "ATTRIBUTE_NAME_SHELL_PIERCING_POWER_100_SLOT_1", "value": 10}
+    far_pen = {"name": "ATTRIBUTE_NAME_SHELL_PIERCING_POWER_500_SLOT_1", "value": 8}
+    dmg2 = {"name": "ATTRIBUTE_NAME_SHELL_DAMAGE_SLOT_2", "value": 40}
+    alt_far = {"name": "ATTRIBUTE_NAME_SHELL_PIERCING_POWER_500_SLOT_1", "value": 100}
+
+    # top 选择 = 全部 COMMON + 每组首个 choice；ALTERNATIVE 备选（含 100 远距）不计，
+    # distance==500 不进近距加成。
+    prog = progression(
+        [node(1, "NODETYPE_COMMON", [common_pen, far_pen]),
+         node(2, "NODETYPE_ALTERNATIVE_MECHANIC", [alt_far])],
+        groups=[{"choices": [2, 3]}],
+    )
+    prog["nodes"].append(node(3, "NODETYPE_ALTERNATIVE_MECHANIC", [dmg2]))
+    assert E.upgrade_top_shell_bonuses(prog) == [
+        {"pen": 10.0, "damage": 0.0}, {"pen": 0.0, "damage": 40.0},
+    ], E.upgrade_top_shell_bonuses(prog)
+
+    # 无弹槽属性的车 → None（不写旁路表条目）
+    prog_plain = {
+        "nodes": [node(1, "NODETYPE_COMMON", [{"name": "ATTRIBUTE_NAME_MAX_HEALTH", "value": 100}])],
+        "alternativeGroups": [],
+        "attributeDefinitions": {},
+    }
+    assert E.upgrade_top_shell_bonuses(prog_plain) is None
+
+    # slotIndex 缺失/负数 fail-closed
+    bad_defs = {"ATTRIBUTE_NAME_SHELL_DAMAGE_SLOT_2": {
+        "script": "ShellDamageUpgrade", "params": {}}}
+    try:
+        E.upgrade_top_shell_bonuses({
+            "nodes": [node(1, "NODETYPE_COMMON", [dmg2])],
+            "alternativeGroups": [], "attributeDefinitions": bad_defs})
+    except RuntimeError as exc:
+        assert "slotIndex" in str(exc), exc
+    else:
+        raise AssertionError("missing slotIndex: expected RuntimeError")
+
+
 def test_layout_fail_closed() -> None:
     """布局字段反例：alternative 带 grid、requiredNodes 成环、gridPosition 越界。"""
     attrs = E.parse_upgrade_attributes(ET.fromstring(ATTRIBUTES_XML))

@@ -1,7 +1,47 @@
 {
-  "15153": {"nation": "china", "stem": "Ch67_BZ_79", "slug": "bz-79"},
-  "27905": {"nation": "ussr", "stem": "R230_Object_432U", "slug": "object-432u"},
-  "28161": {"nation": "ussr", "stem": "R228_KR_1", "slug": "kr-1"},
-  "30241": {"nation": "usa", "stem": "A179_Black_Rock", "slug": "black-rock"},
-  "30497": {"nation": "usa", "stem": "A183_XM69_Hacker", "slug": "xm69-hacker"}
+  "15153": {
+    "nation": "china",
+    "stem": "Ch67_BZ_79",
+    "slug": "bz-79"
+  },
+  "27905": {
+    "nation": "ussr",
+    "stem": "R230_Object_432U",
+    "slug": "object-432u"
+  },
+  "28161": {
+    "nation": "ussr",
+    "stem": "R228_KR_1",
+    "slug": "kr-1"
+  },
+  "30241": {
+    "nation": "usa",
+    "stem": "A179_Black_Rock",
+    "slug": "black-rock"
+  },
+  "30497": {
+    "nation": "usa",
+    "stem": "A183_XM69_Hacker",
+    "slug": "xm69-hacker"
+  },
+  "10593": {
+    "nation": "japan",
+    "stem": "J77_Ho_Ri_4",
+    "slug": "ho-ri-4"
+  },
+  "23361": {
+    "nation": "france",
+    "stem": "F135_AS_XX_40_t",
+    "slug": "as-xx-40-t"
+  },
+  "30737": {
+    "nation": "germany",
+    "stem": "G187_Taschenratte",
+    "slug": "taschenratte"
+  },
+  "30993": {
+    "nation": "germany",
+    "stem": "G189_Hirschkafer",
+    "slug": "hirschkafer"
+  }
 }
