@@ -246,6 +246,38 @@ def test_top_shell_bonuses() -> None:
         raise AssertionError("missing slotIndex: expected RuntimeError")
 
 
+def test_duplicate_attribute_names_recorded() -> None:
+    """同节点同名属性：按逐条叠加保留 + 登记 provenance.attributeDuplicates。
+
+    事实来源 = 客户端 Ho-Ri 4 的 `tier11_dmg_main_gun_01`（SLOT_2 写了两遍 30/55、
+    没有 SLOT_3）——不替客户端纠错，也不静默吞掉。
+    """
+    attrs = E.parse_upgrade_attributes(ET.fromstring(ATTRIBUTES_XML))
+    xml = """<upgradeProgression>
+  <matrix><rows>1</rows><columns>1</columns></matrix>
+  <alternativeMechanicGroups/>
+  <nodes><node>
+    <id>1</id><techName>dmg</techName><nodeType>NODETYPE_COMMON</nodeType>
+    <xpCost>12000</xpCost><gridPosition><row>1</row><column>1</column></gridPosition>
+    <attributes>
+      <attribute><attributeName>ATTRIBUTE_NAME_MAX_HEALTH</attributeName><value>40</value></attribute>
+      <attribute><attributeName>ATTRIBUTE_NAME_MAX_HEALTH</attributeName><value>55</value></attribute>
+    </attributes>
+  </node></nodes>
+</upgradeProgression>"""
+    progression = E.parse_upgrade_progression(
+        ET.fromstring(xml), attrs, "v", "client:src", "sha", "client:attrs", "attrs-sha")
+    assert [a["value"] for a in progression["nodes"][0]["attributes"]] == [40, 55], progression
+    assert progression["provenance"]["attributeDuplicates"] == [{
+        "techName": "dmg", "attribute": "ATTRIBUTE_NAME_MAX_HEALTH", "values": [40, 55],
+    }], progression["provenance"]
+    # 无重复的车不写该字段（既有模块 JSON 形状不变）
+    clean = E.parse_upgrade_progression(
+        ET.fromstring(PROGRESSION_XML), attrs, "game-version", "client:src", "sha",
+        "client:attrs", "attrs-sha")
+    assert "attributeDuplicates" not in clean["provenance"], clean["provenance"]
+
+
 def test_layout_fail_closed() -> None:
     """布局字段反例：alternative 带 grid、requiredNodes 成环、gridPosition 越界。"""
     attrs = E.parse_upgrade_attributes(ET.fromstring(ATTRIBUTES_XML))

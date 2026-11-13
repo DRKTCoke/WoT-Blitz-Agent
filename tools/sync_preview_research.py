@@ -316,6 +316,13 @@ def validate(out: pathlib.Path) -> dict:
             bonuses = None
         if bonuses is not None and shell_sidecar.get(tid) != bonuses:
             problems.append(f"{tid} upgrade_top_shells {shell_sidecar.get(tid)} != {bonuses}")
+        # 客户端数据自身异常：同节点同名属性（t11r3 Ho-Ri 4 的 SLOT_2 写了两遍）。
+        # 数值按逐条叠加照原样保留，这里只告警，不当成导出缺陷、也不替客户端纠错。
+        duplicates = (progression.get("provenance") or {}).get("attributeDuplicates")
+        if duplicates:
+            for dup in duplicates:
+                print(f"   [warn] {tid} {dup['techName']} {dup['attribute']} "
+                      f"重复 {dup['values']}（客户端数据异常，按逐条叠加计入）")
         if tank.get("vehicleAbilities") != EXPECTED_ABILITIES[tid]:
             problems.append(f"{tid} vehicleAbilities {tank.get('vehicleAbilities')} "
                             f"!= {EXPECTED_ABILITIES[tid]}")

@@ -271,6 +271,7 @@ def parse_upgrade_progression(
 
     nodes: list[dict] = []
     ids: set[int] = set()
+    duplicate_attributes: list[dict] = []
     by_tech: dict[str, int] = {}
     pending_required: dict[int, list[str]] = {}
     for node_el in el.findall("./nodes/node"):
@@ -288,6 +289,7 @@ def parse_upgrade_progression(
         ids.add(node_id)
         by_tech[tech_name] = node_id
         attributes = []
+        name_counts: dict[str, int] = {}
         for attr_el in node_el.findall("./attributes/attribute"):
             name = ftext(attr_el, "attributeName")
             if not name:
@@ -298,6 +300,7 @@ def parse_upgrade_progression(
                 "name": name,
                 "value": parse_upgrade_attribute_value(ftext(attr_el, "value")),
             })
+            name_counts[name] = name_counts.get(name, 0) + 1
         node = {
             "id": node_id,
             "techName": tech_name,
@@ -333,6 +336,18 @@ def parse_upgrade_progression(
             raise ValueError(f"alternative upgrade node {tech_name} must not have requiredNodes")
         if required:
             pending_required[node_id] = required
+        # 同节点同名属性：客户端按列表逐条叠加（XML 不要求唯一），本导出**照原样累积**，
+        # 但登记到 provenance.attributeDuplicates——这类条目是客户端数据自身异常
+        # （2026-11-13 实测：Ho-Ri 4 的 tier11_dmg_main_gun_01 把 SHELL_DAMAGE_SLOT_2
+        # 写了 30 与 55 两遍、没有 SLOT_3，导致金币弹加成 85 > 银币弹 40），
+        # 交给消费方与同步校验显式告警，不当成解析结果静默吞掉。
+        for dup_name, count in sorted(name_counts.items()):
+            if count > 1:
+                duplicate_attributes.append({
+                    "techName": tech_name,
+                    "attribute": dup_name,
+                    "values": [a["value"] for a in attributes if a["name"] == dup_name],
+                })
         # 节点级展示元数据：客户端只在部分节点（多为 alternative 选项）给出；
         # 有则保留（与 WotbTools fixture 同形状），没有就不写字段。
         for key in ("displayName", "description", "icon"):
@@ -449,18 +464,25 @@ def parse_upgrade_progression(
     used = {attr["name"] for node in nodes for attr in node["attributes"]}
     used_definitions = {name: attribute_definitions[name] for name in sorted(used)}
 
+    provenance = {
+        "gameVersion": game_version,
+        "source": source,
+        "sha256": source_sha256,
+        "attributesSource": attributes_source,
+        "attributesSha256": attributes_sha256,
+    }
+    # 只在确有异常时写字段（保持既有模块 JSON 形状；additive）。
+    if duplicate_attributes:
+        provenance["attributeDuplicates"] = duplicate_attributes
+        for dup in duplicate_attributes:
+            print(f"   [upgrade] 客户端数据异常：{dup['techName']} "
+                  f"{dup['attribute']} 重复出现 {dup['values']}（按逐条叠加计入）")
     return {
         "matrix": {"rows": matrix_rows, "columns": matrix_columns},
         "nodes": nodes,
         "alternativeGroups": groups,
         "attributeDefinitions": used_definitions,
-        "provenance": {
-            "gameVersion": game_version,
-            "source": source,
-            "sha256": source_sha256,
-            "attributesSource": attributes_source,
-            "attributesSha256": attributes_sha256,
-        },
+        "provenance": provenance,
     }
 
 
