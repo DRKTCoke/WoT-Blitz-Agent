@@ -63,6 +63,15 @@ def select_members(entries: dict[str, tuple[int, int]],
             raise RuntimeError(f"--xml-list 条目不在 zip 内: {path}")
         take(path, "vehicle-xml-list")
 
+    # bridge 车自己的定义 XML 必取（模块/研发边/升级树的输入）。t11p2 时 5 辆恰好都在
+    # CRC 变化清单里，掩盖了这条缺口；t11r3 有 5 辆未变的既有 preview 车，
+    # 只靠 --xml-list 会缺 XML（main() 的 bridge 覆盖校验会 fail-closed）。
+    for tid, v in bridge.items():
+        xml_member = f"app/Data/XML/item_defs/vehicles/{v['nation']}/{v['stem']}.xml.dvpl"
+        if xml_member not in known:
+            raise RuntimeError(f"bridge tank {tid} {v['nation']}/{v['stem']}: XML 不在 zip 内")
+        take(xml_member, f"tank:{tid}:xml")
+
     for name in entries:
         low = name.lower()
         if low.endswith("data/version.txt.dvpl"):
@@ -71,6 +80,12 @@ def select_members(entries: dict[str, tuple[int, int]],
             take(name, "strings")
         elif low.endswith("camouflages.yaml.dvpl"):
             take(name, "camouflages-registry")
+        elif low.endswith(("data/hangarparamsstructureconfig.yaml.dvpl",
+                           "data/hangarparamsconfig.yaml.dvpl",
+                           "data/hangarabilityparamsconfig.yaml.dvpl")):
+            # 配置器 params 平面（分组/格式/能力参数单位）：sync_preview_research 的
+            # sync_params 与机制面板基值都读这三份，缺一即整条同步链 fail-closed。
+            take(name, "hangar-params")
         elif low.endswith("xml/item_defs/tankmen/avatar.xml.dvpl"):
             take(name, "avatar")
         elif "/configs/techtree/" in low and low.endswith("_tree.yaml.dvpl"):
@@ -83,6 +98,9 @@ def select_members(entries: dict[str, tuple[int, int]],
             # （t11b↔t11p2 的 CRC 对比证明其余车辆逐字节未变）。
             if low.endswith("/list.xml.dvpl") or "/components/" in low \
                     or low.endswith("/vehicles/common/tank_upgrade_attributes.xml.dvpl") \
+                    or low.endswith("/vehicles/common/optional_devices.xml.dvpl") \
+                    or low.endswith("/vehicles/common/optional_device_slots.xml.dvpl") \
+                    or low.endswith("/vehicles/common/camouflages.xml.dvpl") \
                     or "/vehicles/common/consumables/" in low \
                     or "/vehicles/common/provisions/" in low \
                     or low.endswith("/vehicles/common/consumablesdefault.yaml.dvpl"):

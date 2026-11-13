@@ -34,14 +34,21 @@ sys.path.insert(0, str(TOOLS))
 
 import export_research_loadout as E  # noqa: E402
 
-PREVIEW_TANKS = (15153, 27905, 28161, 30241, 30497)
-EXPECTED_TT = {"nations": 9, "nodes": 308, "pending": 4, "edges": 314}
+# t11r3（11.4.0.138_7408695 / 11.22_supertest_tier11_6）起 4 个登记位全部实装：
+# J77_Ho_Ri_4（10593）、F135_AS_XX_40_t（23361）、G187_Taschenratte（30737）、
+# G189_Hirschkafer（30993）——9 辆 XI、科技树 0 pending。
+PREVIEW_TANKS = (15153, 27905, 28161, 30241, 30497, 10593, 23361, 30737, 30993)
+EXPECTED_TT = {"nations": 9, "nodes": 312, "pending": 0, "edges": 318}
 EXPECTED_ABILITIES = {
     15153: ["rechargeableNitro"],
     27905: ["combatFrenzy"],
     28161: ["rammingConfiguration"],
     30241: ["burstMode"],
     30497: ["steadyAimSystem"],
+    10593: ["unguidedRocket"],
+    23361: ["externalAmmoModule"],
+    30737: ["auxilliaryWeapons"],
+    30993: ["shellOverheat"],
 }
 
 
@@ -275,6 +282,11 @@ def validate(out: pathlib.Path) -> dict:
         raise SystemExit(f"缺少顶级 HP 旁路表: {sidecar_path}")
     sidecar = {int(k): int(v) for k, v in
                json.loads(sidecar_path.read_text(encoding="utf-8"))["tanks"].items()}
+    shells_path = out.parent / "upgrade_top_shells.json"
+    if not shells_path.is_file():
+        raise SystemExit(f"缺少顶级弹槽加成旁路表: {shells_path}")
+    shell_sidecar = {int(k): v for k, v in
+                     json.loads(shells_path.read_text(encoding="utf-8"))["tanks"].items()}
 
     problems: list[str] = []
     expected_hp: dict[int, int] = {}
@@ -296,6 +308,14 @@ def validate(out: pathlib.Path) -> dict:
             expected_hp[tid] = hp
         if sidecar.get(tid) != hp:
             problems.append(f"{tid} upgrade_top_hp {sidecar.get(tid)} != {hp}")
+        # 逐弹槽点满加成旁路表（tank_cache `*_top` 的输入）：有弹槽属性的车必须在表。
+        try:
+            bonuses = E.upgrade_top_shell_bonuses(progression)
+        except RuntimeError as exc:
+            problems.append(f"{tid} upgrade_top_shell_bonuses: {exc}")
+            bonuses = None
+        if bonuses is not None and shell_sidecar.get(tid) != bonuses:
+            problems.append(f"{tid} upgrade_top_shells {shell_sidecar.get(tid)} != {bonuses}")
         if tank.get("vehicleAbilities") != EXPECTED_ABILITIES[tid]:
             problems.append(f"{tid} vehicleAbilities {tank.get('vehicleAbilities')} "
                             f"!= {EXPECTED_ABILITIES[tid]}")
@@ -346,8 +366,10 @@ def validate(out: pathlib.Path) -> dict:
         problems.append("meta.counts.provisions 与文件不一致")
     if counts.get("techTree") != EXPECTED_TT:
         problems.append(f"techTree census {counts.get('techTree')} != {EXPECTED_TT}")
-    if counts.get("tanks") != 743:
-        problems.append(f"counts.tanks {counts.get('tanks')} != 743")
+    # 车数 = 11.21 基线 738 + 预览实装车（bridge 全部车型；t11r3 为 9 辆）。
+    expected_tanks = 738 + len(PREVIEW_TANKS)
+    if counts.get("tanks") != expected_tanks:
+        problems.append(f"counts.tanks {counts.get('tanks')} != {expected_tanks}")
 
     if problems:
         raise SystemExit("research sync 校验失败:\n" + "\n".join("  - " + p for p in problems))

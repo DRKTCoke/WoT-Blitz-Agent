@@ -29,11 +29,11 @@ TT = RESEARCH_ROOT / "tech_tree"
 NATIONS = ["ussr", "germany", "usa", "china", "france", "uk", "japan", "other", "european"]
 # census 的整车边行（vehicle）；逐来源模块 kind 的拆分是导出的派生事实，
 # 只校验自洽（各 kind 之和 = 总数），不用未记录的数字硬编码。
-# 2026-11-05 t11p2：XI 预览定义车 4 辆（BZ-79/432U/XM69/KR-1），登记位 pending 4 个；
-# 研发边 314 = 310（t11b 基线）+ 4（t11p2 逐车重算净增：china+1 usa+1 ussr+2）。
-CENSUS_VEHICLE_EDGES = 314
-CENSUS_NODES = 308
-CENSUS_PENDING = 4
+# 2026-11-13 t11r3（11.4.0.138）：此前 4 个登记位全部实装（J77_Ho_Ri_4 / F135_AS_XX_40_t /
+# G187_Taschenratte / G189_Hirschkafer），pending 归零；研发边 318 = 314（t11p2）+ 4。
+CENSUS_VEHICLE_EDGES = 318
+CENSUS_NODES = 312
+CENSUS_PENDING = 0
 # 科技树上有节点的预览定义车；A179_Black_Rock 是收藏车（tier 11）但**不在树上**，
 # 单独校验它只存在于 modules 而无 tree 节点（防"树外车混进节点"回归）。
 PREVIEW_TANKS = {
@@ -41,9 +41,14 @@ PREVIEW_TANKS = {
     "R230_Object_432U": ("ussr", 27905),
     "A183_XM69_Hacker": ("usa", 30497),
     "R228_KR_1": ("ussr", 28161),
+    "J77_Ho_Ri_4": ("japan", 10593),
+    "F135_AS_XX_40_t": ("france", 23361),
+    "G187_Taschenratte": ("germany", 30737),
+    "G189_Hirschkafer": ("germany", 30993),
 }
 PREVIEW_OFF_TREE = {"A179_Black_Rock": ("usa", 30241)}
-PENDING_STEMS = {"G189_Hirschkafer", "G187_Taschenratte", "J77_Ho_Ri_4", "F135_AS_XX_40_t"}
+# t11r3 起登记位全部实装：pending 必须为空（有登记位复活时这里先失败）。
+PENDING_STEMS: set[str] = set()
 
 
 def test_tech_tree_export():

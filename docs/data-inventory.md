@@ -84,7 +84,7 @@
 | `data/research/`（研发/配置数据面，132 文件 ≈3.80 MB） | **本机客户端解包**：`tools/export_research_loadout.py`（`meta.json` 记 `11.21.0.1235_7376187 release/11.21.0` + 逐文件 sha256） | 不适用（客户端独有；BlitzKit 只作公式/展示参照，不作数据源） | ✅ 数据 100%：738 辆 / 9 国别模块（纯 11.21；预览增量留在 `data/research_t11_preview/`，不并入现役包；含 `hasTurret`（客户端 `<hull><fakeTurrets>` 标记）、gun `rotationSpeed`、gun/chassis `dispersionFactors`、chassis `hysteresisHealth`/`healthRegenPerSec`/`hullPosition`/`maxLoad`（kg）、车辆级 chassis/hull 碰撞盒 + 逐炮塔盒 + `turretOrigin`/`initialTurretRotation`；技能效果取 `XML/item_defs/tankmen/avatar.xml`，弹种图标取 `Gfx/Shared/tank-supply/ammunition`；物品名缺基础 Strings 时用运行时本地化覆盖层（zh-Hans）+ 5 条 en 补充名）、24 设备 + 9 预设、64 消耗品（common 13）/ 85 补给（common 34）、20 项乘员技能（客户端 avatar.xml 的 per-level 效果 + class 归属）、9 张弹种图标、20 张技能图标、params `format` 70 键、en + zh-Hans 46 条文案、5 张模块图集 | **全部非图标数据随资产包 `research/**` 发布**（全局目录/物品/技能/params/strings/camouflage/meta + 逐车 `modules/{nation}.json`；WotbTools assetProvider 加载；新坦克/物品数值只需更新资产包，不需前端发版）；全局图标集留在 WotbTools `common/research/icons/`；不改 WASM pin。科技树坐标 + 整车研发边随 `--with-research-graph` 落盘为 `tech_tree/{nation}.json`（9 文件：304 节点、0 pending、310 条整车边；列≠tier，tier 读 list.xml；随资产包 `research/tech_tree/**` 发布，WotbTools `agent-techtree` 消费）；ru 文案回退 en。口径与消费契约见 [wotbtools-research-loadout-plan.md](wotbtools-research-loadout-plan.md) |
 | 数据版本差异计划 / pack 复用 | `tools/plan_data_version.py` v2（全量源清单：目录 sha256、ZIP CRC32+size；plane 分类；tank_id/map space 解析；`wholeTable`/pins；`--strict` fail-closed）+ `tools/apply_data_version.py`（`pack_incremental` 硬链接克隆/同哈希复用/断链覆盖/孤儿删除；`data_version_handlers` 注册表：research、vehicle-assets 逐车 GLB/悬挂/履带/图标、core 整表重算只覆盖变化字节、maps 按 space 重导 + 2D/变体整表） | `change_plan.json` / `<out>.apply.json`；`data_version.json` 追加 `base_game_version`/`new_game_version`/`source_plan_sha256`/`changed_planes`/`coverage`/`scope`/`inputs` | ✅ 差异驱动；车辆资产逐项、core 整表但只覆盖变化字节、地图 2D/变体整表（用户选定） |
 | 解包底座（DVPL/DAVA 容器、DLC `packs/` 覆盖层） | 本机自产代码（Rust `dvpl.rs` + Python `tools/wotbtools/`，fail-closed 两端对齐） | 不适用 | ✅ 100/100 | 本地链硬前提：需本机装客户端（`Data/` + `packs/`），游戏版本更新后整链重跑 |
-| 11.22 tier XI 预览包（`release/asset_pack_t11p2_preview/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.130_t11p2.zip`（`11.22_supertest_tier11_5`）的 5 辆 XI 车 + 现役 11.21 包（t11b 前代源 `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11p2-20261106-r8`，dataset **`11.4.0.130`**/超测服（2026-11-11 由 `supertest` 改名，对齐超测客户端自身版本号），显式通道；r8 相对 r7 仅 4 个文件，XI upgradeProgression 布局字段；r7 为 5 辆 XI modules 新增 `vehicleAbilities`；r6 同步预览 strings；r5 补 42 个模块耐久参数；r4 及更早保留回滚） | **743 辆（738+5）**：BZ-79（15153）/ Object 432U（27905，数值随 t11p2 更新）+ 新实装 `R228_KR_1`（28161）/ `A179_Black_Rock`（30241，收藏车不上树）/ `A183_XM69_Hacker`（30497）；manifest **6000 件 / 4460.9 MB**，GLB `tex_fail=[]`；2026-11-06 r2 重建相对旧 `t11p2-20261106` 717 件变更（708 个 tank JSON 对齐 11.21 burst 字段）；r3 相对 r2 仅 5 件（预览车 `model_gun/turret_count` 0→1/1）；r4 修复 5 辆 XI 顶层 `armor`（客户端 `primaryArmor`；XM69 135/80/40、210/90/55）并重算 `tank_cache` 739/743 条摘要，新增 `upgradeProgression`（5 辆）与 `hp_top`（2200/2850/3100/2900/2200），consumables/provisions 过滤器扩到 tier 11（65/89，common 14/38）；r5 补 `modulesDumpSection` 42 个模块耐久参数（params/format 70→112，数据 only、不展示）；r6 同步预览 strings/meta（`meta.gameVersion` 切到 11.22，46→47 条，23 条去掉 `<text_units>` 包裹）；r7 为 5 辆 XI modules 新增 `vehicleAbilities`（源 = 车辆 XML `<extras>` 中 item 目录声明 `<isVehicleAbility>` 的标签；meta 只刷新 3 个 module 哈希）；r8 为 china/usa/ussr 三国 XI modules 补 `upgradeProgression` 布局字段（`matrix{rows,columns}`、逐节点 `gridPosition`/`xpCost`/`requiredNodes`，COMMON/MECHANIC 必填、ALTERNATIVE 必无）+ meta；旧 `t11p2-20261106` 相对 `tank-burst-dpm-20261104` 42 件变更；科技树 308 节点 / 4 pending / 314 边；弹种表 2099（+9）；4 辆新车封面为客户端 128² 占位图（XM69 为真图）；BZ-79 第二弹种 `<kind>` 与 icon 冲突；`current -> datasets/11.21.0`（超测通道显式选择）；旧 `tank-burst-dpm-20261104` 及更早 release 均保留回滚；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
+| 11.22 tier XI 预览包（`release/asset_pack_t11r3_r2/`，**独立预览 release**） | 公开 CDN 超测 ZIP `WotBlitz_11.4.0.138_t11r3.zip`（`11.22_supertest_tier11_6`）的 9 辆 XI 车 + 现役 11.21 包（前代源 `..._130_t11p2.zip` / `..._119_t11b.zip` 保留记录） | 不适用 | ✅ 已上线（当前 `t11r3-20261113-r2`，dataset **`11.4.0.138`**/超测服，显式通道；r2 相对 r1 仅 2 个文件——逐弹 `penetration_top`/`damage_top`（点满强化树口径）；r1 为首发全量重建） | **747 辆（738+9）**：既有 5 辆（BZ-79 15153 / Object 432U 27905 / KR-1 28161 / Black Rock 30241 / XM69 Hacker 30497）+ t11r3 新实装 4 辆（`J77_Ho_Ri_4` 10593、`F135_AS_XX_40_t` 23361、`G187_Taschenratte` 30737、`G189_Hirschkafer` 30993）；manifest **6026 件 / 4482.5 MB**；科技树 **312 节点 / 0 pending / 318 边**；弹种表 **2111**（+12）；consumables/provisions **67/91**（common 16/40）；4 个新机制 `vehicleAbilities` = `unguidedRocket` / `externalAmmoModule` / `auxilliaryWeapons` / `shellOverheat`；7 辆既有车 XML 的 `<unlocks>` 研发边重算（属性零变化 → 738 份基线 tank JSON 逐字节不变）；来源与口径见 [game-data-sources.md](game-data-sources.md) §2.7 |
 | 11.21.0_1 动态内容槽位包（origin `datasets/11.21.0_1` → `11.21.0_1-20261111-r1`，**已上线**） | 客户端 SmartDLC `s11.21.0_1.yaml`（2026-11-10 发布：dc `7405732/3/4` 贴图 + 活动/offer 文案 + 收藏车 Relic 注册文案） | 不适用 | ✅ 已上线（origin release `11.21.0_1-20261111-r1` 由 11.21.0 release `cp -al` 克隆 + 主机侧 stamp，delta 0 变更，公网回读一致；数据面 = 11.21.0-20261106-r2 的硬链接克隆，**逐字节一致**、同 content_digest `sha256:9198d0ca…`，5965 件 / 738 辆——动态内容本身走客户端运行时通道，不进包；待 11.21.1 客户端数据后充实） | 占位登记：版本选择器显式暴露 11.21 内部微更新槽位；与 11.21.0 的唯一差异是 version.json 身份；见 [index.md](index.md) 2026-11-11 条目 |
 
 引擎产物（WASM Release，`wotb-replay-wasm-*.zip`）构建自 `crates/replay-core|wasm`，**不含
@@ -138,7 +138,7 @@
   （738 辆，release `11.21.0-20261106-r2`，**default**，5965 件，含 `research/tech_tree/**`）、
   `11.21.0_1`（SmartDLC 动态内容槽位命名，release `11.21.0_1-20261111-r1`，数据面与 11.21.0
   **逐字节一致**、同 content_digest——动态内容走客户端运行时通道，待 11.21.1 客户端数据充实）与
-  `11.4.0.130`（超测客户端自身版本号，label 超测服，743 辆，release `t11p2-20261106-r8`，
+  `11.4.0.138`（超测客户端自身版本号，label「超测服 11.4.0.138」，747 辆，release `t11r3-20261113-r2`，
   **显式选择**；2026-11-11 由 id `supertest` 改名，旧 `?data=supertest` 链接随之失效）。
   dataset_id 字符集含 `_`（本日放宽；`?data=` 引入 `_` id 前须先部署放宽校验的 WotbTools
   前端 bundle）。`11.22` 通道待正式服包发布时加入
@@ -156,20 +156,21 @@
   [asset-store.md](asset-store.md)
 
 **当前包内布局**（本地实测；本地 11.21 包 **5965 个文件 / 4433.0 MB**；线上当前
-`t11p2-20261106-r8` 为 **743 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
-**6000 个文件 / 逻辑 4460.9 MB**（manifest 逐文件字节和口径；历史 4444.3 MB 为 du 块
-分配口径），manifest 0 mismatch；相对 `tank-burst-dpm-20261104`（740 辆，超测通道回滚版；
-其 226 件 `tank/*.json` = 连发组 `burst_group_*` 36 件 + 弹径权威 `caliber` 207 件）
-为 42 件变更：5 辆 XI 全套 + 数据/pb/research；r2 重建相对旧超测 release
-为 717 件（708 个 tank JSON + 9 个数据/索引）。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
+`t11r3-20261113-r2` 为 **747 辆**预览数据 + 配置器数据 + `research/tech_tree/**` 9 件，
+**6026 个文件 / 逻辑 4482.5 MB**（manifest 逐文件字节和口径；历史 4444.3 MB 为 du 块
+分配口径），manifest 0 mismatch；r2 相对 r1 仅 2 件（`data/tank_cache.json` 的逐弹
+`penetration_top`/`damage_top` + `data/data_version.json`）；r1 相对上一代超测 release
+`t11p2-20261106-r9`（743 辆 / 6000 件）为 52 件变更（4 辆新车全套 + 数据/pb/research/
+科技树）+ 7 辆既有车 XML 的研发边重算（属性零变化 → 738 份基线 `tank/*.json` 与
+`game_data` 逐字节复用）。`map/` 共 **43 个目录 / 669 件**：36 个基础图 + 7 个映射有差异的
 变体目录（`medvedkovo_03`、`amigosville_03`、`rudniki_01/02/03`、`canal_01`、
 `neptune_02`；共享资产硬链接，`index.json` 按 map_id 指向本 key）。其余 12 个变体
 （desert_train_02/03、erlenberg_01/02、medvedkovo_02、amigosville_02、milbase_02..05、
 lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。下表按本地 11.21 基线
 （738 辆）计数；`map2d`/`cover` 行按 43 图 + index 计数（36 基础图 + 7 个变体，均有独立 2D/封面）。
 线上当前默认 release 为 `11.21.0-20261106-r2`（738 辆，5965 件 / 4433.0 MB，含
-`research/tech_tree/**`）；超测通道 `11.4.0.130`（原 `supertest`）为 743 辆（release `t11p2-20261106-r8`，manifest 6000 件 /
-4460.9 MB），仅显式选择；逐代增量见
+`research/tech_tree/**`）；超测通道 `11.4.0.138`（原 `supertest`）为 747 辆（release `t11r3-20261113-r2`，manifest 6026 件 /
+4482.5 MB），仅显式选择；逐代增量见
 [game-data-sources.md](game-data-sources.md) §5.2 release 链）：
 
 | 包内路径 | 文件数 | 来自（见第一节编号） |
@@ -339,7 +340,7 @@ lumber_01、neptune_01）分段表与基础变体一致，共用基础目录。�
 | 车辆数值（`tanks.pb` / `models.pb` 等价物） | `tools/extract_vehicles.py`（+ `data/tank_id_bridge.json` 的 `--emit-bridge`）→ `tools/emit_vehicle_pb.py` | `data/cache/local_pb/`（738 辆全量）→ **`data/tanks.pb` / `data/models.pb` 现役** | ✅ |
 | 坦克悬挂 | `tools/export_tank_suspension.py` | `data/tank_suspension/<id>.json` → 包内 `suspension/`（728 辆；9 辆无块、1 辆空悬挂按 fail-closed 不产文件） | ✅ |
 | 地面履带印 | `tools/export_tank_tread.py` | `data/tank_tread/<id>.json` + `data/tank_tread_textures/*.webp` → 包内 `tread/` | ✅ |
-| 研发/配置数据面（装备 / 消耗品 / 补给 / 乘员技能 / 弹种图标 / 参数面板 / 逐车模块（含 `hasTurret`、火炮 `rotationSpeed`、扩圈系数）/ 科技树坐标+整车边（`--with-research-graph --tech-tree-extra`）/ 文案 + 物品/模块/技能图标） | `tools/export_research_loadout.py`（客户端解包；`meta.json` 记 gameVersion + 逐文件 sha256；预览车用 `--game-data` / `--bridge` / `--modules-only --merge` 并入，预览 Data 根可用 `tools/fetch_t11_techtree.py --data-root` 按需重建；已含 preview 合并的输出目录禁止全量重导——防回退门禁）；**预览发布统一入口 `tools/sync_preview_research.py`**（基座复用 + modules/items 变更导出 + XI 升级树/hp_top/tier-11 物品校验 + `.sync.json` 逐文件 reused/updated/new） | `data/research/`（132 文件 ≈3.80 MB，740 辆含两辆 XI 预览）→ **非图标数据全部进资产包 `research/**`**（`scripts/export_asset_pack.py`）；全局图标集进 WotbTools `common/research/icons/` | ✅ 坦克百科配置器消费（新坦克/物品靠资产包更新） |
+| 研发/配置数据面（装备 / 消耗品 / 补给 / 乘员技能 / 弹种图标 / 参数面板 / 逐车模块（含 `hasTurret`、火炮 `rotationSpeed`、扩圈系数）/ 科技树坐标+整车边（`--with-research-graph --tech-tree-extra`）/ 文案 + 物品/模块/技能图标） | `tools/export_research_loadout.py`（客户端解包；`meta.json` 记 gameVersion + 逐文件 sha256；预览车用 `--game-data` / `--bridge` / `--modules-only --merge` 并入，预览 Data 根可用 `tools/fetch_t11_techtree.py --data-root` 按需重建；已含 preview 合并的输出目录禁止全量重导——防回退门禁）；**预览发布统一入口 `tools/sync_preview_research.py`**（基座复用 + modules/items 变更导出 + XI 升级树/hp_top/`upgrade_top_shells.json`/tier-11 物品校验 + `.sync.json` 逐文件 reused/updated/new）；XI 强化树图标 `tools/export_augment_icons.py`（ZIP Range 取 @2x、alpha 裁边、无损 webp → WotbTools `common/research/icons/upgrades/`，机制目录名两处客户端拼写差异显式登记） | `data/research/`（132 文件 ≈3.80 MB，740 辆含两辆 XI 预览）→ **非图标数据全部进资产包 `research/**`**（`scripts/export_asset_pack.py`）；全局图标集进 WotbTools `common/research/icons/` | ✅ 坦克百科配置器消费（新坦克/物品靠资产包更新） |
 | 动态装甲状态声明 | `tools/extract_armor_states.py` | `data/armor_states.json`（6 车 12 态；无块车不在产物中） | ✅ |
 | 俯视地面合成 | `tools/composite_overhead.py`（**朝向 = 契约常量 `YX`**，8 朝向相关只作 `audit` 诊断，见 [game-data-sources.md](game-data-sources.md) §5.5；**世代护栏**：meta 缺 `ground` 键的旧世代渲染件 `--write` 默认拒写，`--allow-legacy-render` 仅诊断用，回归 `tools/test_overhead_guard.py`）+ `tools/archive_overhead_bake.py`（烘焙件归档助手：成对校验 + 世代体检 + `--clear-pack`） | 写回 `<pack>/map/<key>/ground.webp`（**打包器之后跑**，随后 `--refresh-manifest` 重算 manifest）；重烘须 `--base-dir data/cache/maps`；`--verify` 反解读回实际烘入朝向 | ✅ |
 

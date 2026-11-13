@@ -92,6 +92,14 @@ pub struct ShellData {
     /// 跳弹临界角（度）；HEAT 数据为 85°、HE 为 0（爆炸弹判定侧另有 90° 覆盖）。
     #[serde(default)]
     pub ricochet: f64,
+    /// 点满强化树后的穿深（仅 XI：基础穿深 + 强化树 `ShellPiercingPowerUpgrade`
+    /// 近距加成，来自 `data/upgrade_top_shells.json` 旁路表）。卡片口径 = 无配件 +
+    /// 强化树点满，与 `hp_top` 同语义；非 XI / 无加成车省略字段。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub penetration_top: Option<u32>,
+    /// 点满强化树后的血量伤害（仅 XI：基础伤害 + `ShellDamageUpgrade` 加成）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub damage_top: Option<u32>,
 }
 
 /// 归一化名称索引项：坦克名预归一结果，避免每次模糊查询对全部坦克重新归一。
@@ -306,6 +314,7 @@ impl TankResolver {
 
         let tanks = crate::wargaming::blitzkit::load_tanks();
         let top_hp = load_top_hp_map();
+        let top_shell_bonuses = load_top_shell_bonuses();
 
         for (id, tank) in tanks.iter() {
             let name = tank.name.clone();
@@ -352,8 +361,16 @@ impl TankResolver {
                         caliber: s.caliber,
                         normalization: s.normalization,
                         ricochet: s.ricochet,
+                        penetration_top: None,
+                        damage_top: None,
                     });
                 }
+            }
+            // 点满强化树的逐弹 `*_top`（仅 XI）：加成直接叠加在本解析器的 pb 基础值上，
+            // 与 WotbTools projectTankUpgrades(mode='top') 同口径；槽位数超过弹数 =
+            // 槽位对齐失败，fail-closed（语义漂移不得静默落半份数据）。
+            if let Some(bonuses) = top_shell_bonuses.get(id) {
+                apply_top_shell_bonuses(*id, &mut shells, bonuses)?;
             }
 
             // 视野 / 炮塔旋转速度：同样取**顶级炮塔**。
@@ -427,6 +444,73 @@ fn load_top_hp_map() -> HashMap<u32, u32> {
                     let id = k.parse::<u32>().ok()?;
                     let hp = v.as_u64()?;
                     Some((id, hp as u32))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 逐弹槽点满强化树加成（`data/upgrade_top_shells.json`，由 export_research_loadout.py
+/// 从客户端 `<upgradeProgression>` 生成，选择语义与 top HP 一致）。
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct ShellTopBonus {
+    /// 近距穿深加成（`ShellPiercingPowerUpgrade`，distance != '500'）。
+    #[serde(default)]
+    pub pen: f64,
+    /// 血量伤害加成（`ShellDamageUpgrade`）。
+    #[serde(default)]
+    pub damage: f64,
+}
+
+/// 把逐槽加成叠加到 `shells`（槽位序 = 顶级炮 `shells` 序），写入 `*_top`。
+///
+/// 只对旁路表**实际列出的槽位**赋值（未列出的弹保持 `None` = 无该机制，消费方回落
+/// 基础值）；槽位数超过弹数直接报错——那说明 pb 弹序与导出时的炮定义对齐失败。
+fn apply_top_shell_bonuses(
+    tank_id: u32,
+    shells: &mut [ShellData],
+    bonuses: &[ShellTopBonus],
+) -> Result<()> {
+    if bonuses.len() > shells.len() {
+        anyhow::bail!(
+            "upgrade_top_shells.json: tank {tank_id} 带 {} 个弹槽加成，但顶级炮只有 {} 发弹（槽位对齐失败，fail-closed）",
+            bonuses.len(),
+            shells.len()
+        );
+    }
+    for (slot, bonus) in bonuses.iter().enumerate() {
+        let shell = &mut shells[slot];
+        shell.penetration_top = Some((shell.penetration as f64 + bonus.pen).round() as u32);
+        shell.damage_top = Some((shell.damage as f64 + bonus.damage).round() as u32);
+    }
+    Ok(())
+}
+
+/// tank_id → 逐槽加成（槽位序 = 顶级炮 `shells` 序）。文件可选：普通车/旧数据集
+/// 没有它时返回空表，`ShellData` 的 `*_top` 保持 None，不影响既有 JSON 形状。
+fn load_top_shell_bonuses() -> HashMap<u32, Vec<ShellTopBonus>> {
+    let path = crate::data::data_path("upgrade_top_shells.json");
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) else {
+        eprintln!(
+            "warning: {} is not valid JSON; shell *_top disabled",
+            path.display()
+        );
+        return HashMap::new();
+    };
+    doc.get("tanks")
+        .and_then(|v| v.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| {
+                    let id = k.parse::<u32>().ok()?;
+                    let slots = serde_json::from_value::<Vec<ShellTopBonus>>(
+                        v.get("slots")?.clone(),
+                    )
+                    .ok()?;
+                    Some((id, slots))
                 })
                 .collect()
         })
@@ -542,6 +626,44 @@ mod tests {
             fallback.as_ref().map(|r| (r.dep, r.ele)),
             Some((top.dep, top.ele))
         );
+    }
+
+    /// 逐弹 `*_top` 叠加（点满强化树口径）：只写旁路表列出的槽位、四舍五入到整数、
+    /// 槽位溢出 fail-closed（2026-11-13 t11r3 Ho-Ri 4：298→320 / 560→600）。
+    #[test]
+    fn top_shell_bonuses_apply_by_slot_and_fail_closed() {
+        let shell = |pen: u32, dmg: u32| ShellData {
+            shell_type: "ap".into(),
+            shell_type_id: None,
+            penetration: pen,
+            damage: dmg,
+            module_damage: 0,
+            explosion_radius: 0.0,
+            caliber: 155.0,
+            normalization: 5.0,
+            ricochet: 70.0,
+            penetration_top: None,
+            damage_top: None,
+        };
+        let mut shells = vec![shell(298, 560), shell(363, 540), shell(84, 645)];
+        let bonuses = [
+            ShellTopBonus { pen: 22.0, damage: 40.0 },
+            ShellTopBonus { pen: 27.0, damage: 85.0 },
+        ];
+        apply_top_shell_bonuses(10593, &mut shells, &bonuses).expect("2 槽对 3 发弹");
+        assert_eq!(shells[0].penetration_top, Some(320));
+        assert_eq!(shells[0].damage_top, Some(600));
+        assert_eq!(shells[1].penetration_top, Some(390));
+        assert_eq!(shells[1].damage_top, Some(625));
+        // 旁路表未列出的槽位保持 None（HE 无该机制）——不得被补成基础值
+        assert_eq!(shells[2].penetration_top, None);
+        assert_eq!(shells[2].damage_top, None);
+        // 基础值不被就地修改
+        assert_eq!(shells[0].penetration, 298);
+
+        let mut one = vec![shell(100, 100)];
+        let too_many = [ShellTopBonus { pen: 1.0, damage: 1.0 }; 2];
+        assert!(apply_top_shell_bonuses(1, &mut one, &too_many).is_err(), "槽位溢出必须失败");
     }
 
     /// 弹种摘要必须带等效厚度判定输入（口径/转正角/跳弹角）：装甲查看器按弹算

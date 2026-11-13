@@ -247,10 +247,13 @@ WotbTools 经 assetProvider 加载，**不进入前端 bundle**。全局图标�
 
 ### 2.7 11.22 tier XI 超测预览 ZIP（非现役源）
 
-**当前预览源（2026-11-05 起）**：`http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.130_t11p2.zip`
-（20,718,671,157 B ≈ 19.3 GiB，Last-Modified 2026-11-02；`version.txt.dvpl` =
-`11.4.0.130_7400742 11.22_supertest_tier11_5 WOTB_Win7`）。生产 dataset 通道
-`supertest`（超测服）指向该包构建的 release `t11p2-20261106-r3`（r2 为同日中间版，保留回滚）。
+**当前预览源（2026-11-12 起）**：`http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.138_t11r3.zip`
+（20,878,922,119 B ≈ 19.4 GiB，Last-Modified 2026-11-12；`version.txt.dvpl` =
+`11.4.0.138_7408695 11.22_supertest_tier11_6 WOTB_Win7`）。dataset **`11.4.0.138`**
+（label「超测服 11.4.0.138」）指向该包构建的 release `t11r3-20261113-r1` → 现役
+**`t11r3-20261113-r2`**（**6026 件 / 4482.5 MB / 747 辆 = 738 + 9 XI**，
+`content_digest sha256:6e77f8d6…`；r1 保留回滚）。上一轮 dataset `11.4.0.130`
+（`t11p2-20261106-r9`）保留作回滚。
 
 **实装范围（t11p2）**：`list.xml` 共 5 辆 level 11：
 
@@ -261,11 +264,15 @@ WotbTools 经 assetProvider 加载，**不进入前端 bundle**。全局图标�
 | `R228_KR_1` | ussr | 110 | 28161 | `[11, 5]` | **t11p2 新实装** |
 | `A179_Black_Rock` | usa | 118 | 30241 | 无（收藏车，不上树） | **t11p2 新实装** |
 | `A183_XM69_Hacker` | usa | 119 | 30497 | `[11, 6]` | **t11p2 新实装** |
+| `J77_Ho_Ri_4` | japan | 41 | 10593 | `[11, 2]` | **t11r3 实装**（t11p2 时仅登记） |
+| `F135_AS_XX_40_t` | france | 91 | 23361 | `[11, 4]` | **t11r3 实装**（t11p2 时仅登记） |
+| `G187_Taschenratte` | germany | 120 | 30737 | `[11, 7]` | **t11r3 实装**（t11p2 时仅登记） |
+| `G189_Hirschkafer` | germany | 121 | 30993 | `[11, 3]` | **t11r3 实装**（t11p2 时仅登记） |
 
-`tank_id = (list id << 8) | 国家低位`（ussr=1 / usa=33 / china=49）。仍在登记、未实装的
-4 个位：`G189_Hirschkafer` `[11,3]`、`G187_Taschenratte` `[11,7]`、`J77_Ho_Ri_4`
-`[11,2]`、`F135_AS_XX_40_t` `[11,4]`（pending，只有坐标）。注意 t11p2 从客户端移除了
-英系收藏车 `GB144_Cutter`——它不在 11.21 基线里，对本仓无影响。
+`tank_id = (list id << 8) | 国家低位`（ussr=1 / usa=33 / china=49 / france=17 / japan=81 /
+germany=9——数值以各包 `list.xml` 实测 `(id<<8)|低位` 为准）。t11r3（11.4.0.138）
+把这 4 个登记位全部实装，科技树 **0 pending**（312 节点 / 318 边）。注意 t11p2 从客户端
+移除了英系收藏车 `GB144_Cutter`——它不在 11.21 基线里，对本仓无影响。
 
 **提取纪律（t11p2 起，按 CRC 对比控制范围）**：完整包 20 GB 不做全量下载。先对
 "基线预览 ZIP ↔ 新预览 ZIP" 的 central directory 做 **逐成员 CRC 对比**
@@ -290,6 +297,48 @@ WotbTools 经 assetProvider 加载，**不进入前端 bundle**。全局图标�
 （20,666,565,975 B，`11.22_supertest_tier11_4`，Last-Modified 2026-10-19）；当时的
 release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚。`cdn.static.wotb.app`
 同时是现役客户端 `server_config_urls.yaml.dvpl` 的 `Location2`，域名属官方 CDN。
+
+**产物与边界（t11r3，2026-11-13 已上线）**：
+
+- `release/asset_pack_t11r3_r2/`（本地构建产物，gitignored）：11.21 现役基线 + **9 辆 XI = 747 辆**；
+  manifest **6026 件 / 4482.5 MB**；`data_version` = `release/11.21.0+t11r3`（preview：
+  client_version `11.22_supertest_tier11_6`，tanks 9 辆 ID）。dataset `11.4.0.138`，
+  release `t11r3-20261113-r2`，`content_digest sha256:6e77f8d6…`；r1 为同日首发（保留回滚），
+  r2 相对 r1 仅 2 件（`data/tank_cache.json` + `data/data_version.json`）。
+- **两包 CRC 对比是本轮提取的定位依据**：t11p2 ↔ t11r3 的 central directory 逐成员 CRC
+  比对（只读 Range，不下载 20 GB）得到 added 216 / removed 3 / changed 143；按平面：
+  `vehicle-xml` 9 changed + 4 added、`vehicle-components` 18（france/germany/japan ×
+  6 类）、`vehicle-params` 4 added、`vehicle-model` 100 added、`strings` 20 语言全变、
+  `shared-xml` 20（`tank_upgrade_attributes.xml` + `vehicle.xml` + items 的 consumables/
+  provisions）、`techtree` 1（`prem_tanks.yaml`，不在消费链）、`ui`/`hangar`/`other`
+  为客户端界面与特效资源（不进资产包）。
+- **7 辆既有车 XML 的变更经逐字 diff 定性**：全部是 `<unlocks><vehicle>…<cost>325000</cost>`
+  研发边（`Bat_Chatillon25t`→`F135_AS_XX_40_t`、`G121_Grille_15_L63`→`G189_Hirschkafer`、
+  `Maus`→`G187_Taschenratte`、`J20_Ho_Ri_type3`→`J77_Ho_Ri_4`）与升级节点 `<icon>` 重指
+  （`icon_burst_mode` / `steady_aim_system` / `ram_damage`，XM69 的 `icon_elite*` 被移除）；
+  **没有任何属性数值改动**，因此 738 份基线 `tank/*.json`、`game_data/*.json` 逐字节不变
+  是正确结果。研发边由 `tools/update_t11_techtree.py` 外科重算（科技树 308→**312 节点 /
+  0 pending / 314→318 边**）。
+- **逐弹 `*_top` 旁路表（r2 的唯一数据面变化）**：`export_research_loadout.py` 的
+  `upgrade_top_shell_bonuses()` 按 top 选择语义累加 `ShellPiercingPowerUpgrade`（近距）与
+  `ShellDamageUpgrade` 的节点值，产出 `data/upgrade_top_shells.json`（`{tankId: {slots:
+  [{pen, damage}…]}}`）；Rust `tank_resolver.rs` 读它写入 `tank_cache` 逐弹
+  `penetration_top` / `damage_top`（仅 XI；旁路槽位数 > 顶级炮弹数 fail-closed）。
+  口径 = **无配件 + 强化树点满**（与 `hp_top` 同语义），Rust 侧复用 WotbTools
+  `projectTankUpgrades(mode='top')` 的同一语义；实测 Ho-Ri 4 AP 298→320、APCR 363→390、
+  HE 84→90，与前端投影逐值一致。
+- 4 辆新车的弹种数据与客户端 `shells.xml` 逐值核对通过（含 `_132mm_KwK_L66_Taschenratte`
+  的 APCR/HEAT/HE 与 `_150mm_Rheinmetall_Geweih` 的 APCR 1700 m/s）；`tank_upgrade_attributes.xml`
+  新增 **24 条属性图标引用**（SAS 4 / shell-overheat 4 / ram-damage 3 / burst-mode 3 /
+  external-ammo 3 / aux-weapons 4 / unguided-rocket 5，其中 `icon_ammobay_and_boost` 被
+  `icon_external_ammo_module_allow_non_damagimg_hits` 替换——客户端拼写 `damagimg` 原样保留），
+  图标本体由 `tools/export_augment_icons.py` 从 ZIP Range 取出（@2x、alpha 裁边、无损 webp）
+  落到 WotbTools `common/research/icons/upgrades/`。
+- **客户端 UI 事实（机制图标归属）**：`UI/Screens3/Lobby/Common/TankMechanics/TankMechanicsOverlay.yaml`
+  给出 `eGameplayMechanics → *Icon` 的权威映射。物品 stem 与枚举拼写有两处不一致，已在
+  `export_augment_icons.py` 的 `MECHANIC_ICON_ALIASES` 显式登记：`auxilliaryWeapons`
+  （物品 `<script>` 的自有拼写）→ `auxiliary-weapons`；`externalAmmoModule` →
+  `external-ammunition-supply`（枚举 `ExternalAmmunitionSupply`）。表外未命中即 fail-closed。
 
 **产物与边界（t11p2，2026-11-05/06 已上线）**：
 
@@ -693,11 +742,13 @@ BT-2（1025）：`<armor_8>0<vehicleDamageFactor>0.0</vehicleDamageFactor>`，Bl
 （否则硬链接会被展开）。完整布局、发布 recipe、迁移与 GC 见
 [asset-store.md](asset-store.md)。
 
-**当前 release（2026-11-06 r2）**：`11.21.0-20261106-r2`，**738 辆**（11.21 现役全量重建，
-含 `research/tech_tree/**`），**5965 件 / 4433.0 MB**，`content_digest sha256:9198d0ca…`；
-`version.json` 登记 dataset `11.21.0`，`current` 指向它。超测通道 `supertest` 仍为
-`t11p2-20261106-r3`（743 辆 / 6000 件 / 4460.9 MB），仅显式选择；r2 保留回滚；首发
-`t11p2-20261105` 因穿深缺陷（弹道迁移未适配，见 §2.7）被同日替换，两代均保留。
+**当前 release（2026-11-13）**：默认 dataset `11.21.0` → `11.21.0-20261106-r2`，**738 辆**
+（含 `research/tech_tree/**`），**5965 件 / 4433.0 MB**，`content_digest sha256:9198d0ca…`；
+`current` 指向它。超测 dataset `11.4.0.138` → **`t11r3-20261113-r2`**（747 辆 /
+**6026 件 / 4482.5 MB**，`content_digest sha256:6e77f8d6…`），仅显式选择；同名 dataset
+上一代 `t11r3-20261113-r1` 与上一轮超测 `t11p2-20261106-r9`（743 辆 / 6000 件 /
+4460.9 MB，dataset `11.4.0.130`）均保留回滚；首发 `t11p2-20261105` 因穿深缺陷
+（弹道迁移未适配，见 §2.7）被同日替换，历史各代均保留。
 
 **再上一代 release（2026-11-01）**：`2d-basemap-v3-20261101`，基于 `t11-preview-20261029-techtree`
 
