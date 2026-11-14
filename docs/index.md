@@ -89,6 +89,35 @@ XI 级预览车的 2D 封面可按车型核查来源、复跑渲染和生成裁�
 | v0.3.5 | 原始 HP 证据 `Damage.hp_raw`（未钳制 u16，区分零血与终态未知）与 AoI 开段物化 HP；method8 原始命中通知（全变体、不分类）。 |
 | v0.3.4 | 包流自行分帧（不再依赖 crate 对 payload 的反序列化——单个 pickle 形状偏差不再让整场失败）。 |
 
+### 3D 回放炮声：客户端 Wwise 武器音效提取链（2026-11-14，数据面新增 + 工具）
+
+**做了什么**：新增 `tools/export_gun_sounds.py` 与 `tools/export_gun_class.py`，把客户端内置
+炮声接进 3D 回放资产面（消费实现与性能优化在 WotbTools 仓）。
+
+**证据基础**（全部本机 Steam 客户端实测，细节见 [game-data-sources.md](game-data-sources.md) §2.8）：
+
+- 事件闭集 = `SoundbanksInfo.json` 的 `play_wpn_{small,mid,main,large,huge,huge_extra,auto}_3p`
+  （`MaxAttenuation=500 m`，Close/Mid/Far 三层，每层 3–5 变体）；
+- 媒体在 `weapon.pck` / `weapon_basic.pck`（**AKPK 容器**，按 `bnkextr pck.bt` 契约解析，两 pck
+  合计 181 个流式媒体），媒体编码 = RIFF/WAVE + Wwise Vorbis（`fmt` tag `0xFFFF`）→
+  `vgmstream-cli` → OGG；
+- 炮 → 等级 = 车辆 XML 炮元素 `<effects>wpn_shot_*</effects>`（内联优先 / 共享 `guns.xml`
+  回退，`_mb` = 同等级变体）：**736/738 车、1553/1557 炮槽位**；4 个无对应事件的 tag
+  （彩蛋车 STT、水枪 ×2、导弹）fail-closed 报告、不入表。
+
+**产物**：`release/asset_pack/sound/wpn/`——75 OGG（≈3.8 MB，7 类 × 3 层）+
+`index.json`（class→layer→文件）+ `gun_class.json`（tank_id→gun_local→tag）。
+`release/` 整体 gitignored，**生产可见需随资产包发一个新 release**（§2.1 流程）。
+
+**爆炸半径**：解析器/WASM/pb/切面零改动（触发源是既有 `shots[].t_fire`）；资产包新增
+`sound/wpn/**`（manifest +3 类共 77 件）；WotbTools 消费侧新增 `gunfireAudio.ts`（回放
+spawnShot 钩子 + 500 m 距离增益），**Android `wotbVersion` 需同 PR bump**（scene-runtime +
+asset consumption 变更）。
+
+**未取证 / 边界**：客户端按距离切 Close/Mid/Far 的 HIRC 阈值未取证（当前固定 close 层 +
+WebAudio 距离/pan 增益，曲线为产品近似非客户端语义）；音频为 Wargaming 资产，公开发布
+口径待产品侧确认。
+
 ### 资产原发布补齐：连发组 DPM + 口径权威的 tank/*.json 上线（2026-11-04，数据面发布勘误）
 
 **问题（修了但没上线）**：2026-10-28 连发组（PomPom）DPM 修复与 2026-10-27 口径权威修正
