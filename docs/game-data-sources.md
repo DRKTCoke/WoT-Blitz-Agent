@@ -566,6 +566,78 @@ release（`t11-preview-*` 系列）全部保留在生产 `releases/` 作回滚�
 - HP 口径：`tank_cache`/`tank_data` 的 `hp` = 车体 + 炮塔（2770 / 2260）；
   `configs[].hull_hp` = 车体（2170 / 1760）。
 
+### 2.8 炮声资产 ← 客户端 WwiseSound（3D 回放音效，2026-11-14）
+
+**来源**（与 §2.6 同一 Data 根，Steam 客户端实测）：
+
+| 文件 | 内容 | 用法 |
+|---|---|---|
+| `WwiseSound/SoundbanksInfo.json.dvpl` | Wwise 事件 → 媒体清单（事件名/衰减/时长/`ReferencedStreamedFiles`/`IncludedMemoryFiles`；媒体 `Id` 与 `Path` 文件名尾部 `_XXXXXXXX` 十六进制同域） | 事件闭集与媒体对账的权威表 |
+| `WwiseSound/weapon.pck.dvpl` | AKPK 容器：103 个流式媒体（含小/中口径与 auto 炮声） | `.wem` 本体 |
+| `WwiseSound/weapon_basic.pck.dvpl` | AKPK 容器：78 个流式媒体（主炮/大炮/巨炮层） | 同上；**两 pck 缺一即 3p 媒体不全** |
+| `WwiseSound/weapon.bnk.dvpl` | 内嵌 105 个记忆体媒体 | 本管线不消费（3p 事件全部走流式） |
+
+**AKPK（`.pck`）布局**（`eXpl0it3r/bnkextr` 的 `pck.bt` 契约；Python 侧
+`export_gun_sounds.parse_akpk_streams` 与之一致）：
+
+```
+AKPK | headerLength u32 | version u32 | languagesLength u32 | banksLength u32 | streamsLength u32
+[externalsLength u32 当 headerLength != 16+前三者和]
+LANGUAGES{ count, {nameOffset,id}[], UTF16 names }
+FILE_TABLE banks{ count, entry[]{id,blockSize,length,startBlock,languageId} }
+FILE_TABLE streams{ 同上 }   ← .wem 索引在这里
+绝对文件偏移 = startBlock * blockSize
+```
+
+**媒体编码**：`.wem` = RIFF/WAVE 容器 + **Wwise Vorbis**（`fmt` tag `0xFFFF`，
+44.1 kHz；实测 monaural）。转换链：`vgmstream-cli <wem> -o <wav>` →
+`soundfile`（libsndfile）编码 **OGG Vorbis**。
+
+**事件闭集**（3D 回放只消费 3p；1p 车内视角不导出）：
+
+```
+play_wpn_{small|mid|main|large|huge|huge_extra|auto}_3p
+```
+
+- 全部 `MaxAttenuation = 500 m`（超过即不发声）；
+- 每个事件按**距离分层** Close / Mid / Far，每层 3–5 个随机变体 →
+  7 类 × 3 层 = **75 个流式媒体**（实测全覆盖；两 pck 合计 181 个流式媒体）；
+- 客户端在 Wwise HIRC 内按距离切层的**阈值未取证**——当前消费方固定 close 层 +
+  WebAudio 距离增益（产品近似，见 WotbTools `scene/playback/gunfireAudio.ts` 头注释）。
+
+**炮 → 音效等级映射**（客户端文件级声明，不做统计推断）：
+
+- 车辆 XML 炮元素 `<effects>wpn_shot_*</effects>`（内联优先、共享
+  `components/guns.xml` 回退，与 `extract_vehicles` 同一 `DefResolver` 合并规则）；
+- `_mb` 后缀 = 同等级变体标记，消费方并入同一等级事件；
+- 全量实测（2026-11-14，738 车）：**736 车 / 1553 炮**有映射，
+  覆盖 1557 个「local id + effects 双全」炮槽位中的 1553；
+- 未映射（fail-closed 报告、不入表）：`wpn_Oth50_STT`（彩蛋车）、
+  `shot_watergun_auto` / `shot_watergun_main`（水枪）、`shot_atgm`（导弹）各 1。
+
+**输出**（`release/asset_pack/sound/wpn/`，随资产包发布，`release/` 整体 gitignored）：
+
+| 文件 | 内容 |
+|---|---|
+| `{class}_{close|mid|far}_{nn}.ogg` | 75 个 OGG（实测合计 ≈3.8 MB），`nn` = 客户端变体序号 |
+| `index.json` | `{class: {layer: [file, ...]}}`——消费方按表取文件，不猜命名 |
+| `gun_class.json` | `{tank_id: {gun_local: "<effects tag>"}}`（736 车） |
+
+**工具与依赖**：
+
+- `tools/export_gun_sounds.py`（pck → wem → wav → ogg + `index.json`）——
+  需要外部 `vgmstream-cli`（`--vgmstream` 或环境变量 `VGMSTREAM_CLI`；仓库不内置），
+  以及 Python `soundfile`；
+- `tools/export_gun_class.py`（车辆 XML → `gun_class.json`，无外部依赖）；
+- 两者默认 Data 根同 `extract_vehicles.GAME_DIR_CANDIDATES`。
+
+**边界**：
+
+- 音频是 Wargaming 资产；公开发布口径由产品侧决定（本仓只记录提取链）。
+- 两 pck 的其余流式媒体（UI/语音/坦克引擎等，181 − 75 = 106 个）不在事件闭集内，不导出。
+- `play_wpn_damaged_1p` / `play_wpn_shell_last` / `play_wpn_shell_penult`
+  无流式媒体（或仅 1p），不属 3p 闭环。
+
 ---
 
 ## 三、`tank_id` ↔ 游戏模型名的桥（可由客户端重建）
