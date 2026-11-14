@@ -437,12 +437,12 @@ def test_ability_gun_references() -> None:
         definitions = {
             ("guns", "secondary"): ET.fromstring(
                 "<gun><reloadTime>19</reloadTime><clip><count>2</count><rate>40</rate>"
-                "</clip><shots><ap/><rocket><speed>40</speed></rocket></shots></gun>"),
+                "</clip><shots><ap/><rocket><speed>40</speed><piercingPower>342 342</piercingPower></rocket></shots></gun>"),
             ("shells", "ap"): ET.fromstring(
-                "<ap><damage><armor>150</armor></damage><speed>1200</speed></ap>"),
+                "<ap><kind>ARMOR_PIERCING</kind><piercingPower>276 276</piercingPower><damage><armor>150</armor></damage><speed>1200</speed></ap>"),
             ("shells", "rocket"): ET.fromstring(
                 "<rocket><damage><armor>320</armor></damage><speed>0</speed>"
-                "<acceleration>20</acceleration></rocket>"),
+                "<kind>HOLLOW_CHARGE</kind><piercingPower>1 2</piercingPower><maxSpeed>300</maxSpeed><maxDistance>350</maxDistance><acceleration>20</acceleration></rocket>"),
         }
 
         def __init__(self, path):
@@ -455,9 +455,11 @@ def test_ability_gun_references() -> None:
         gun = E.auxiliary_gun(pathlib.Path("."), "germany:secondary")
         assert gun == {"reference": "germany:secondary", "reloadTime": 19,
                        "clip": {"count": 2, "rate": 40},
-                       "shots": [{"stem": "ap", "damage": 150, "speed": 1200},
+                       "shots": [{"stem": "ap", "damage": 150, "speed": 1200, "type_id": 0,
+                                  "penetration": 276, "penetration_far": 276},
                                  {"stem": "rocket", "damage": 320, "speed": 40,
-                                  "acceleration": 20}]}
+                                  "type_id": 2, "penetration": 342, "penetration_far": 342,
+                                  "maxSpeed": 300, "maxDistance": 350, "acceleration": 20}]}
         try:
             E.auxiliary_gun(pathlib.Path("."), "germany:missing")
         except ValueError as exc:

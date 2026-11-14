@@ -323,6 +323,8 @@ germany=9——数值以各包 `list.xml` 实测 `(id<<8)|低位` 为准）。t1
 车辆模块 `turrets[].guns[].stats.clip` 同样保留内联弹夹的 count/rate。
 两种弹间隔均按各自的 `60/rate` 计算。
 
+副武器 shots 逐弹保留 kind 对应的 type_id、piercingPower 两端的 penetration / penetration_far、maxDistance 和适用的 maxSpeed。弹道字段按 gun shot 优先、同版 shell 回退。t11r3 神官为 HEAT、342/342 mm、40 m/s，囊鼠为 AP、276/276 mm、1200 m/s。
+
 **历史预览源（t11b，2026-10-22 核验）**：
 `http://cdn.static.wotb.app/win7/WotBlitz_11.4.0.119_t11b.zip`
 （20,666,565,975 B，`11.22_supertest_tier11_4`，Last-Modified 2026-10-19）；当时的

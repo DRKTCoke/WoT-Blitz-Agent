@@ -57,6 +57,7 @@ from extract_vehicles import (  # noqa: E402
     Components,
     DefResolver,
     Extractor,
+    KIND_ID,
     Names,
     default_game_data,
     last_child,
@@ -873,8 +874,19 @@ def auxiliary_gun(game_data: pathlib.Path, reference: str) -> dict:
                "speed": trajectory.floats("speed", None)}
         if row["damage"] is None or row["speed"] is None:
             raise ValueError(f"incomplete shell {shot.tag!r} for ability gun {reference!r}")
-        if trajectory.elem("acceleration") is not None:
-            row["acceleration"] = float(trajectory.text("acceleration"))
+        kind_id = KIND_ID.get(trajectory.text("kind"))
+        if kind_id is not None:
+            row["type_id"] = kind_id
+        penetration = trajectory.text("piercingPower")
+        if penetration:
+            ends = penetration.split()
+            if len(ends) != 2:
+                raise ValueError(f"invalid piercingPower for {reference}/{shot.tag}: {penetration}")
+            row["penetration"], row["penetration_far"] = map(float, ends)
+        for field in ("acceleration", "maxSpeed", "maxDistance"):
+            value = trajectory.text(field)
+            if value is not None:
+                row[field] = float(value)
         result["shots"].append(row)
     return result
 
